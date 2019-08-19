@@ -525,11 +525,11 @@ epv_curve %>%
 
 # Notes about EPV animation
 
-Gotta use `epv.smooth` on y-axis because its a lot smoother than `epv`
+- Gotta use `epv.smooth` on y-axis because its a lot smoother than `epv`
 
-We use transition_reveal() to allow the lines to gradually be build up. transition_reveal() knows to only keep old data for path and polygon type layers which means that our segment, point, and text layers only appears as single data points in each frame
+- We use transition_reveal() to allow the lines to gradually be build up. transition_reveal() knows to only keep old data for path and polygon type layers which means that our segment, point, and text layers only appears as single data points in each frame
 
-We do not use transition_time() + shadow_mark()/shadow_trail() as combination does not allow for a connected line. Shadows exists as separate data elements and cannot be combined with the data in the current frame, meaning that it would result in a number of disconnected line segments instead of a single connected line for each temperature profile
+- We do not use transition_time() + shadow_mark()/shadow_trail() as combination does not allow for a connected line. Shadows exists as separate data elements and cannot be combined with the data in the current frame, meaning that it would result in a number of disconnected line segments instead of a single connected line for each temperature profile
 
 
 
