@@ -1,0 +1,4511 @@
+---
+title: "Final Result"
+author: "Howard Baik"
+date: "4/3/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Setup
+```{r}
+library(tidyverse)
+library(gganimate)
+library(rvest)
+library(magick)
+library(ggrepel)
+theme_set(theme_minimal())
+source("epv-demo-code.R")
+
+pbp <- read_csv("data/2013_11_01_MIA_BKN.csv")
+players <- read_csv("data/players2013.csv")
+
+
+# Create full court: https://rpubs.com/jalapic/nbaplaybyplay
+#Forked from Ed K�pfer
+#https://gist.github.com/edkupfer
+#https://gist.github.com/asteves/7266330
+
+fullcourt <- function () {
+  
+  palette(c("#E41A1C", "#377EB8", "#4DAF4A", "#984EA3",
+            "#FF7F00", "#FFFF33", "#A65628", "#F781BF", "#999999"))
+  
+  #Generate Data for the 3 point line
+  # Define the circle; add a point at the center if the 'pie slice' if the shape is to be filled
+  circleFun <- function(center=c(0,5.25), diameter=20.9, npoints=20000, start=0, end=1, filled=TRUE){
+    tt <- seq(start*pi, end*pi, length.out=npoints)
+    df <- data.frame(
+      y = center[1] + diameter / 2 * cos(tt),
+      x = center[2] + diameter / 2 * sin(tt)
+    )
+    return(df)
+  }
+  
+  halfCircle <- circleFun(c(0, 5.25), 20.9*2, start=0, end=1, filled=FALSE) 
+  ggplot(data=data.frame(y=1,x=1),aes(x,y))+
+    ###halfcourt line:
+    geom_path(data=data.frame(x=c(47,47),y=c(0,50)))+
+    ###outside boy:
+    geom_path(data=data.frame(y=c(0,0,50,50,0),x=c(0,94,94,0,0)))+
+    ###solid FT semicircle above FT line:
+    geom_path(data=data.frame(y=c((-6000:(-1)/1000)+25,(1:6000/1000)+25),x=c(19+sqrt(6^2-c(-6000:(-1)/1000,1:6000/1000)^2))),aes(y=y,x=x))+
+    geom_path(data=data.frame(y=c((-6000:(-1)/1000)+25,(1:6000/1000)+25),x=c(75+sqrt(6^2-c(-6000:(-1)/1000,1:6000/1000)^2))),aes(y=y,x=x))+
+    ###dashed FT semicircle below FT line:
+    geom_path(data=data.frame(y=c((-6000:(-1)/1000)+25,(1:6000/1000)+25),x=c(19-sqrt(6^2-c(-6000:(-1)/1000,1:6000/1000)^2))),aes(y=y,x=x),linetype='dashed')+
+    geom_path(data=data.frame(y=c((-6000:(-1)/1000)+25,(1:6000/1000)+25),x=c(75-sqrt(6^2-c(-6000:(-1)/1000,1:6000/1000)^2))),aes(y=y,x=x),linetype='dashed')+
+    ###kex:
+    geom_path(data=data.frame(y=c(17,17,33,33,17),x=c(0,19,19,0,0)))+
+    geom_path(data=data.frame(y=c(17,17,33,33,17),x=c(94,75,75,94,94)))+
+    ###boy inside the kex:
+    geom_path(data=data.frame(y=c(19,19,31,31,19),x=c(0,19,19,0,0)))+
+    geom_path(data=data.frame(y=c(19,19,31,31,19),x=c(94,75,75,94,94)))+
+    ###restricted area semicircle:
+    geom_path(data=data.frame(y=c((-4000:(-1)/1000)+25,(1:4000/1000)+25),x=c(5.25+sqrt(4^2-c(-4000:(-1)/1000,1:4000/1000)^2))),aes(y=y,x=x))+
+    geom_path(data=data.frame(y=c((-4000:(-1)/1000)+25,(1:4000/1000)+25),x=c(88.75-sqrt(4^2-c(-4000:(-1)/1000,1:4000/1000)^2))),aes(y=y,x=x))+
+    ###halfcourt semicircle:
+    geom_path(data=data.frame(y=c((-6000:(-1)/1000)+25,(1:6000/1000)+25),x=c(47-sqrt(6^2-c(-6000:(-1)/1000,1:6000/1000)^2))),aes(y=y,x=x))+
+    geom_path(data=data.frame(y=c((-6000:(-1)/1000)+25,(1:6000/1000)+25),x=c(47+sqrt(6^2-c(-6000:(-1)/1000,1:6000/1000)^2))),aes(y=y,x=x))+
+    ###rim:
+    geom_path(data=data.frame(y=c((-750:(-1)/1000)+25,(1:750/1000)+25,(750:1/1000)+25,(-1:-750/1000)+25),x=c(c(5.25+sqrt(0.75^2-c(-750:(-1)/1000,1:750/1000)^2)),c(5.25-sqrt(0.75^2-c(750:1/1000,-1:-750/1000)^2)))),aes(y=y,x=x))+
+    geom_path(data=data.frame(y=c((-750:(-1)/1000)+25,(1:750/1000)+25,(750:1/1000)+25,(-1:-750/1000)+25),x=c(c(88.75+sqrt(0.75^2-c(-750:(-1)/1000,1:750/1000)^2)),c(88.75-sqrt(0.75^2-c(750:1/1000,-1:-750/1000)^2)))),aes(y=y,x=x))+
+    ###backboard:
+    geom_path(data=data.frame(y=c(22,28),x=c(4,4)),lineend='butt')+
+    geom_path(data=data.frame(y=c(22,28),x=c(90,90)),lineend='butt')+
+    ###three-point line:
+    # geom_path(data=data.frame(y=c(-21,-21,-21000:(-1)/1000,1:21000/1000,21,21),x=c(0,169/12,5.25+sqrt(23.75^2-c(-21000:(-1)/1000,1:21000/1000)^2),169/12,0)),aes(y=y,x=x))+
+    ###fiy aspect ratio to 1:1
+    geom_path(data=halfCircle,aes(x=x,y=y+25))+
+    ###Complete the three-point line 
+    geom_path(data=data.frame(y=c(4.1,4.1,45.9,45.9),x=c(5.25,0,0,5.25)))+
+    geom_path(data=halfCircle,aes(x=94-x,y=y+25))+
+    geom_path(data=data.frame(y=c(4.1,4.1,45.9,45.9),x=c(88.75,94,94,88.75)))+
+    coord_fixed()+
+    
+    ###Clean up the Court 
+    theme_bw()+theme(panel.grid=element_blank(), legend.title=element_blank(), panel.border=element_blank(),axis.text=element_blank(),axis.ticks=element_blank(),axis.title=element_blank(),legend.position="top")}
+
+
+
+# Grab Jersey Function
+# Define rvest function to extract jersey number
+grab_jersey <- function(player_id) {
+  
+  swish_url <- paste0("https://www.swishanalytics.com/nba/players/player?id=", player_id)
+  
+  swish <- read_html(swish_url)
+  
+  result <- swish %>% 
+    html_node(".mobile-hide") %>%
+    html_text() %>% 
+    # Extract out numeric
+    parse_number()
+  
+  result
+}
+
+```
+
+
+# Glossary for `pbp`
+
+`time`: Real time (ms)
+
+x,y,z: Ball position in feet
+
+Game Clock: Time remaining in quarter (seconds)
+
+Court Region: [0, 94] X [0, 50]
+
+An NBA court is 94 feet by 50 feet
+
+* For NHL animation, I `annotation_custom` to embed an ice rink and then drew `geom_point` over the ice rinks. 
+
+
+Now that I have `full_court` (94 feet by 50 feet), I can add on points by `full_court + geom_point(), etc` 
+
+`XX_ent`: Id number
+
+You can find more info on each id number (player) using https://www.swishanalytics.com/nba/players/player?id=61849
+
+
+# Function to find PossID
+
+```{r}
+e.dat %>% 
+  filter(quarter == 4) %>% 
+  mutate(game_clock_min = game_clock %/% 60,
+         game_clock_sec = game_clock %% 60) %>% 
+  select(quarter, possID, game_clock_min, game_clock_sec) %>% 
+  View()
+```
+
+
+OR `players2013.csv` has columns on player id, name, position number
+
+```{r}
+first_quarter <- pbp %>% filter(quarter == 1)
+
+fullcourt() +
+  geom_path(data = first_quarter, aes(x = x, y = y)) +
+  ggtitle("Movement of Ball in Q1") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+fullcourt() +
+  geom_path(data = first_quarter, aes(x = a3_x, y = a3_y)) +
+  ggtitle("Movement of Lebron in Q1") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r}
+# I feel like possID have NA values @ start of quarter and end of quarter and during stoppages
+pbp %>% 
+  filter(is.na(possID)) %>%
+  count(game_clock, sort = TRUE) %>% 
+  ungroup() %>% 
+  mutate(game_clock_minutes = game_clock / 60)
+```
+
+
+
+# Plot one possession (possID == 1)
+```{r}
+# Make dataset for first possession
+first_poss <- pbp %>% 
+  filter(possID == 1)
+
+fullcourt() +
+  geom_path(data = first_poss, aes(x = x, y = y ,group = possID), size=6) +  # Ball Movement
+  theme(legend.position="none") 
+
+fullcourt() +
+  geom_point(data = first_poss, aes(x = h1_x, y = h1_y, group = possID), size=3, color = "salmon1") +  
+  geom_point(data = first_poss, aes(x = h2_x, y = h2_y, group = possID), size=3, color = "lightskyblue1") +  
+  geom_point(data = first_poss, aes(x = h3_x, y = h3_y, group = possID), size=3, color = "yellow") +  
+  geom_point(data = first_poss, aes(x = h4_x, y = h4_y, group = possID), size=3, color = "orange") +  
+  geom_point(data = first_poss, aes(x = h5_x, y = h5_y, group = possID), size=3, color = "green") +  
+  geom_point(data = first_poss, aes(x = a1_x, y = a1_y, group = possID), size=3, color = "salmon1") +  
+  geom_point(data = first_poss, aes(x = a2_x, y = a2_y, group = possID), size=3, color = "lightskyblue1") +  
+  geom_point(data = first_poss, aes(x = a3_x, y = a3_y, group = possID), size=3, color = "yellow") +  
+  geom_point(data = first_poss, aes(x = a4_x, y = a4_y, group = possID), size=3, color = "orange") +  
+  geom_point(data = first_poss, aes(x = a5_x, y = a5_y, group = possID), size=3, color = "green") +  
+  geom_point(data = first_poss, aes(x = x, y = y, group = possID), size=3, color = "gold") +  
+  theme(legend.position="none") 
+```
+
+
+Players on two distinct teams should have red + blue colors to distinguish them
+
+# Initial Animation
+```{r}
+a <- fullcourt() +
+  geom_point(data = first_poss, aes(x = h1_x, y = h1_y, group = possID), size=3, color = "lightskyblue1") +  
+  geom_point(data = first_poss, aes(x = h2_x, y = h2_y, group = possID), size=3, color = "lightskyblue1") +  
+  geom_point(data = first_poss, aes(x = h3_x, y = h3_y, group = possID), size=3, color = "lightskyblue1") +  
+  geom_point(data = first_poss, aes(x = h4_x, y = h4_y, group = possID), size=3, color = "lightskyblue1") +  
+  geom_point(data = first_poss, aes(x = h5_x, y = h5_y, group = possID), size=3, color = "lightskyblue1") +  
+  geom_point(data = first_poss, aes(x = a1_x, y = a1_y, group = possID), size=3, color = "salmon1") +  
+  geom_point(data = first_poss, aes(x = a2_x, y = a2_y, group = possID), size=3, color = "salmon1") +  
+  geom_point(data = first_poss, aes(x = a3_x, y = a3_y, group = possID), size=3, color = "salmon1") +  
+  geom_point(data = first_poss, aes(x = a4_x, y = a4_y, group = possID), size=3, color = "salmon1") +  
+  geom_point(data = first_poss, aes(x = a5_x, y = a5_y, group = possID), size=3, color = "salmon1") +  
+  geom_point(data = first_poss, aes(x = x, y = y, group = possID), size=3, color = "gold") +
+  transition_time(time = -game_clock) +
+  ggtitle("Game Clock: {round(-frame_time / 60, 2)}") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+animate(a, fps = 8)  
+```
+
+Used Blue to show home team players and Red to show away team players. Ball is in gold. Also, transition_time() in -game_clock so that we transition in time in a decreasing order. I used glue syntax to convert frame_time to minutes and round it to two decimal places.
+
+```{r}
+# Filter out for last possession ID
+second_poss <- pbp %>% 
+  filter(possID == 2)
+
+# Define rvest function to extract jersey number
+grab_jersey <- function(player_id) {
+  
+  swish_url <- paste0("https://www.swishanalytics.com/nba/players/player?id=", player_id)
+  
+  swish <- read_html(swish_url)
+  
+  result <- swish %>% 
+    html_node(".mobile-hide") %>%
+    html_text() %>% 
+    # Extract out numeric
+    parse_number()
+  
+  result
+}
+
+
+# Replace _ent with jersey numbers
+a1_ent_jersey <- second_poss %>% 
+  pull(a1_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+a2_ent_jersey <- second_poss %>% 
+  pull(a2_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+a3_ent_jersey <- second_poss %>% 
+  pull(a3_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+a4_ent_jersey <- second_poss %>% 
+  pull(a4_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+a5_ent_jersey <- second_poss %>% 
+  pull(a5_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h1_ent_jersey <- second_poss %>% 
+  pull(h1_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h2_ent_jersey <- second_poss %>% 
+  pull(h2_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h3_ent_jersey <- second_poss %>% 
+  pull(h3_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h4_ent_jersey <- second_poss %>% 
+  pull(h4_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h5_ent_jersey <- second_poss %>% 
+  pull(h5_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+# Mutate jersey number columns
+second_poss <- second_poss %>% 
+  mutate(a1_ent_jersey = a1_ent_jersey,
+         a2_ent_jersey = a2_ent_jersey,
+         a3_ent_jersey = a3_ent_jersey,
+         a4_ent_jersey = a4_ent_jersey,
+         a5_ent_jersey = a5_ent_jersey,
+         h1_ent_jersey = h1_ent_jersey,
+         h2_ent_jersey = h2_ent_jersey,
+         h3_ent_jersey = h3_ent_jersey,
+         h4_ent_jersey = h4_ent_jersey,
+         h5_ent_jersey = h5_ent_jersey)
+
+
+fullcourt() +
+  # Home Players + Jersey Numbers
+  geom_point(data = second_poss, aes(x = h1_x, y = h1_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = second_poss, aes(x = h1_x, y = h1_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = second_poss, aes(x = h2_x, y = h2_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = second_poss, aes(x = h2_x, y = h2_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = second_poss, aes(x = h3_x, y = h3_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = second_poss, aes(x = h3_x, y = h3_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = second_poss, aes(x = h4_x, y = h4_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = second_poss, aes(x = h4_x, y = h4_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = second_poss, aes(x = h5_x, y = h5_y, group = possID), size = 6, color = "lightskyblue1") + 
+  geom_text(data = second_poss, aes(x = h5_x, y = h5_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  # Away Players
+  geom_point(data = second_poss, aes(x = a1_x, y = a1_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = second_poss, aes(x = a1_x, y = a1_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = second_poss, aes(x = a2_x, y = a2_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = second_poss, aes(x = a2_x, y = a2_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = second_poss, aes(x = a3_x, y = a3_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = second_poss, aes(x = a3_x, y = a3_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = second_poss, aes(x = a4_x, y = a4_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = second_poss, aes(x = a4_x, y = a4_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = second_poss, aes(x = a5_x, y = a5_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = second_poss, aes(x = a5_x, y = a5_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = second_poss, aes(x = x, y = y, group = possID), size = 3, color = "gold") +
+  transition_time(time = -game_clock) +
+  ggtitle("Game Clock: {round(-frame_time / 60, 2)}") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+
+
+# Idea Bank for PBP:
+
+I like spped of animation to be set at animate(a, fps = 8)
+Maybe display Quarter? 1st, 2nd, 3rd, 4th
+Utilize `event_id` by looking at Appendix of EPV_demo.pdf
+
+
+# IMPORTANT: Using event_id, narrate the play 
+```{r}
+case_when(
+  event_id == 1 ~ "Free Throw Made",
+  event_id == 2 ~ "Free Throw Missed",
+  event_id == 3 ~ "Shot Made",
+  event_id == 4 ~ "Shot Missed",
+  event_id == 5 ~ "Offensive Rebound",
+  event_id == 6 ~ "Defensive Rebound",
+  event_id == 7 ~ "Turnover",
+  event_id == 8 ~ "Foul",
+  event_id == 9 ~ "Violation",
+  event_id == 10 ~ "Substitution",
+  event_id == 11 ~ "Timeout",
+  event_id == 12 ~ "Jump Ball",
+  event_id == 13 ~ "Ejection",
+  event_id == 14 ~ "Start Period",
+  event_id == 15 ~ "End Period",
+  event_id == 16 ~ "Clock Sync",
+  event_id == 17 ~ "Instant Replay",
+  event_id == 18 ~ "Replay Ruling",
+  event_id == 19 ~ "Game Over",
+  event_id == 20 ~ "Stoppage",
+  event_id == 21 ~ "Dribble",
+  event_id == 22 ~ "Pass",
+  event_id == 23 ~ "Possession",
+  event_id == 24 ~ "Shot Block",
+  event_id == 25 ~ "Assist",
+  TRUE ~ "NA"
+)
+```
+
+
+
+
+# Convert Game Clock to Broadcast Game Clock: For example, 1st 10:43
+```{r}
+game_clock <- pbp %>% 
+  select(game_clock)
+
+pbp %>% 
+  select(quarter) %>% 
+  mutate(quarter_processed = case_when(
+    quarter == 1 ~ "1ST",
+    quarter == 2 ~ "2ND",
+    quarter == 3 ~ "3RD",
+    quarter == 4 ~ "4TH",
+    TRUE ~ "NA"
+  ))
+
+game_clock %>% 
+  mutate(game_clock_minutes = game_clock %/% 60) %>% 
+  mutate(game_clock_seconds = game_clock %% 60)
+```
+
+
+
+# Change Game Clock to NBA-Broadcast like
+```{r}
+second_poss <- second_poss %>% 
+  mutate(quarter_processed = case_when(
+    quarter == 1 ~ "1ST",
+    quarter == 2 ~ "2ND",
+    quarter == 3 ~ "3RD",
+    quarter == 4 ~ "4TH",
+    TRUE ~ "NA"
+  )) %>% 
+  mutate(game_clock_minutes = game_clock %/% 60) %>% 
+  mutate(game_clock_seconds = game_clock %% 60)
+
+second_poss_quarter <- second_poss %>% 
+  pull(quarter_processed) %>% 
+  first()
+
+fullcourt() +
+  # Home Players + Jersey Numbers
+  geom_point(data = second_poss, aes(x = h1_x, y = h1_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = second_poss, aes(x = h1_x, y = h1_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = second_poss, aes(x = h2_x, y = h2_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = second_poss, aes(x = h2_x, y = h2_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = second_poss, aes(x = h3_x, y = h3_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = second_poss, aes(x = h3_x, y = h3_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = second_poss, aes(x = h4_x, y = h4_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = second_poss, aes(x = h4_x, y = h4_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = second_poss, aes(x = h5_x, y = h5_y, group = possID), size = 6, color = "lightskyblue1") + 
+  geom_text(data = second_poss, aes(x = h5_x, y = h5_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  # Away Players
+  geom_point(data = second_poss, aes(x = a1_x, y = a1_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = second_poss, aes(x = a1_x, y = a1_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = second_poss, aes(x = a2_x, y = a2_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = second_poss, aes(x = a2_x, y = a2_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = second_poss, aes(x = a3_x, y = a3_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = second_poss, aes(x = a3_x, y = a3_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = second_poss, aes(x = a4_x, y = a4_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = second_poss, aes(x = a4_x, y = a4_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = second_poss, aes(x = a5_x, y = a5_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = second_poss, aes(x = a5_x, y = a5_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = second_poss, aes(x = x, y = y, group = possID), size = 3, color = "gold") +
+  transition_time(time = -game_clock) +
+  ggtitle(paste0(second_poss_quarter, " ",  "{-frame_time %/% 60}", ":", "{round(-frame_time %% 60, 2)}")) +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+
+In epv-demo.Rmd, `e.dat` is the same dataset as `pbp` in this Rmd except `e.dat` contains `epv.smooth`, `epv`, `prob`, and `vals`, etc
+
+
+
+# Find out what possID NA values mean
+```{r}
+pbp %>%
+  filter(is.na(possID))
+
+
+fullcourt() +
+  # Home Players + Jersey Numbers
+  geom_point(data = possID_na, aes(x = h1_x, y = h1_y, group = possID), size = 6, color = "lightskyblue1") +  
+  
+  geom_point(data = possID_na, aes(x = h2_x, y = h2_y, group = possID), size = 6, color = "lightskyblue1") +  
+  
+  geom_point(data = possID_na, aes(x = h3_x, y = h3_y, group = possID), size = 6, color = "lightskyblue1") +  
+  
+  geom_point(data = possID_na, aes(x = h4_x, y = h4_y, group = possID), size = 6, color = "lightskyblue1") +  
+  
+  geom_point(data = possID_na, aes(x = h5_x, y = h5_y, group = possID), size = 6, color = "lightskyblue1") + 
+
+  # Away Players
+  geom_point(data = possID_na, aes(x = a1_x, y = a1_y, group = possID), size = 6, color = "salmon1") +  
+  
+  geom_point(data = possID_na, aes(x = a2_x, y = a2_y, group = possID), size = 6, color = "salmon1") +  
+  
+  geom_point(data = possID_na, aes(x = a3_x, y = a3_y, group = possID), size = 6, color = "salmon1") +  
+  
+  geom_point(data = possID_na, aes(x = a4_x, y = a4_y, group = possID), size = 6, color = "salmon1") +  
+  
+  geom_point(data = possID_na, aes(x = a5_x, y = a5_y, group = possID), size = 6, color = "salmon1") +  
+  
+  geom_point(data = possID_na, aes(x = x, y = y, group = possID), size = 3, color = "gold") +
+  transition_time(time = -game_clock)
+  
+```
+
+
+# Animate EPV curve using `e.dat` from epv-demo-code.Rmd
+```{r}
+epv_curve <- e.dat %>% 
+  filter(possID == 2)
+
+epv_curve %>% 
+  ggplot(aes(x = 720 - game_clock, y = epv.smooth)) +
+  geom_path() +
+  transition_reveal(720 - game_clock) +
+  labs(x = "Time (Seconds)",
+       y = "EPV",
+       title = "Possession #2 EPV") 
+```
+
+# Notes about EPV animation
+
+Gotta use `epv.smooth` on y-axis because its a lot smoother than `epv`
+
+We use transition_reveal() to allow the lines to gradually be build up. transition_reveal() knows to only keep old data for path and polygon type layers which means that our segment, point, and text layers only appears as single data points in each frame
+
+We do not use transition_time() + shadow_mark()/shadow_trail() as combination does not allow for a connected line. Shadows exists as separate data elements and cannot be combined with the data in the current frame, meaning that it would result in a number of disconnected line segments instead of a single connected line for each temperature profile
+
+
+
+
+# See how to add gganimate onto future Shiny App
+```{r}
+
+
+A<-rnorm(100,50,10)
+B<-rnorm(100,50,10)
+DV <- c(A,B)
+IV <- rep(c("A","B"),each=100)
+sims <- rep(rep(1:10,each=10),2)
+df<-data.frame(sims,IV,DV)
+
+means_df <- df %>%
+               group_by(sims,IV) %>%
+               summarize(means=mean(DV),
+                         sem = sd(DV)/sqrt(length(DV)))
+
+stats_df <- df %>%
+              group_by(sims) %>%
+              summarize(ts = t.test(DV~IV,var.equal=TRUE)$statistic)
+
+a <- ggplot(means_df, aes(x = IV,y = means, fill = IV)) +
+  geom_bar(stat = "identity") +
+  geom_point(aes(x = IV, y = DV), data = df, alpha = .23) +
+  geom_errorbar(aes(ymin = means - sem, ymax = means + sem), width = .2) +
+  theme_classic() +
+  transition_states(
+    states = sims,
+    transition_length = 2,
+    state_length = 1
+  ) + 
+  enter_fade() + 
+  exit_shrink() +
+  ease_aes('sine-in-out')
+  
+a_gif <- animate(a, width = 240, height = 240)
+
+b <- ggplot(stats_df, aes(x = ts))+
+  geom_vline(aes(xintercept = ts, frame = sims))+
+  geom_line(aes(x=x,y=y),
+            data = data.frame(x = seq(-5,5, .1),
+                              y = dt(seq(-5,5, .1), df = 18))) +
+  theme_classic() +
+  ylab("density") +
+  xlab("t value") +
+  transition_states(
+    states = sims,
+    transition_length = 2,
+    state_length = 1
+  ) +
+  enter_fade() + 
+  exit_shrink() +
+  ease_aes('sine-in-out')
+
+b_gif <- animate(b, width = 240, height = 240)
+
+a_mgif <- image_read(a_gif)
+b_mgif <- image_read(b_gif)
+
+new_gif <- image_append(c(a_mgif[1], b_mgif[1]), stack = TRUE)
+for(i in 2:100){
+  combined <- image_append(c(a_mgif[i], b_mgif[i]), stack = TRUE)
+  new_gif <- c(new_gif, combined)
+}
+
+new_gif
+
+```
+
+* So, I think you should add gganimate to shiny using magick. Just add new_gif onto shiny
+
+
+# Combine PBP and EPV Line Charts
+```{r}
+
+
+
+
+# Save animation as object
+pbp_anim <- fullcourt() +
+  # Home Players + Jersey Numbers
+  geom_point(data = second_poss, aes(x = h1_x, y = h1_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = second_poss, aes(x = h1_x, y = h1_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = second_poss, aes(x = h2_x, y = h2_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = second_poss, aes(x = h2_x, y = h2_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = second_poss, aes(x = h3_x, y = h3_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = second_poss, aes(x = h3_x, y = h3_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = second_poss, aes(x = h4_x, y = h4_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = second_poss, aes(x = h4_x, y = h4_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = second_poss, aes(x = h5_x, y = h5_y, group = possID), size = 6, color = "lightskyblue1") + 
+  geom_text(data = second_poss, aes(x = h5_x, y = h5_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  # Away Players
+  geom_point(data = second_poss, aes(x = a1_x, y = a1_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = second_poss, aes(x = a1_x, y = a1_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = second_poss, aes(x = a2_x, y = a2_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = second_poss, aes(x = a2_x, y = a2_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = second_poss, aes(x = a3_x, y = a3_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = second_poss, aes(x = a3_x, y = a3_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = second_poss, aes(x = a4_x, y = a4_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = second_poss, aes(x = a4_x, y = a4_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = second_poss, aes(x = a5_x, y = a5_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = second_poss, aes(x = a5_x, y = a5_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = second_poss, aes(x = x, y = y, group = possID), size = 3, color = "gold") +
+  transition_time(time = -game_clock) +
+  ggtitle(paste0(second_poss_quarter, " ",  "{-frame_time %/% 60}", ":", "{round(-frame_time %% 60, 2)}")) +
+  theme(plot.title = element_text(hjust = 0.5))
+
+# Save animation as object
+epv_anim <- epv_curve %>% 
+  ggplot(aes(x = 720 - game_clock, y = epv.smooth)) +
+  geom_path() +
+  transition_reveal(720 - game_clock) +
+  labs(x = "Time (Seconds)",
+       y = "EPV",
+       title = "Possession #2 EPV") 
+
+
+# Save as gif
+pbp_gif <- animate(pbp_anim, width = 600, height = 240)
+epv_gif <- animate(epv_anim, width = 600, height = 240)
+
+pbp_mgif <- image_read(pbp_gif)
+epv_mgif <- image_read(epv_gif)
+
+pbp_epv_gif <- image_append(c(epv_mgif[1], pbp_mgif[1]), stack = TRUE)
+for(ii in 2:100){
+  combined <- image_append(c(epv_mgif[ii], pbp_mgif[ii]), stack = TRUE)
+  pbp_epv_gif <- c(pbp_epv_gif, combined)
+}
+
+pbp_epv_gif
+```
+
+
+
+Try the same as above with Poss ID 12
+```{r}
+# Filter out for last possession ID
+twelve_poss <- pbp %>% 
+  filter(possID == 12)
+
+# Define rvest function to extract jersey number
+grab_jersey <- function(player_id) {
+  
+  swish_url <- paste0("https://www.swishanalytics.com/nba/players/player?id=", player_id)
+  
+  swish <- read_html(swish_url)
+  
+  result <- swish %>% 
+    html_node(".mobile-hide") %>%
+    html_text() %>% 
+    # Extract out numeric
+    parse_number()
+  
+  result
+}
+
+
+# Replace _ent with jersey numbers
+a1_ent_jersey <- twelve_poss %>% 
+  pull(a1_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+a2_ent_jersey <- twelve_poss %>% 
+  pull(a2_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+a3_ent_jersey <- twelve_poss %>% 
+  pull(a3_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+a4_ent_jersey <- twelve_poss %>% 
+  pull(a4_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+a5_ent_jersey <- twelve_poss %>% 
+  pull(a5_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h1_ent_jersey <- twelve_poss %>% 
+  pull(h1_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h2_ent_jersey <- twelve_poss %>% 
+  pull(h2_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h3_ent_jersey <- twelve_poss %>% 
+  pull(h3_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h4_ent_jersey <- twelve_poss %>% 
+  pull(h4_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h5_ent_jersey <- twelve_poss %>% 
+  pull(h5_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+# Mutate jersey number columns
+twelve_poss <- twelve_poss %>% 
+  mutate(a1_ent_jersey = a1_ent_jersey,
+         a2_ent_jersey = a2_ent_jersey,
+         a3_ent_jersey = a3_ent_jersey,
+         a4_ent_jersey = a4_ent_jersey,
+         a5_ent_jersey = a5_ent_jersey,
+         h1_ent_jersey = h1_ent_jersey,
+         h2_ent_jersey = h2_ent_jersey,
+         h3_ent_jersey = h3_ent_jersey,
+         h4_ent_jersey = h4_ent_jersey,
+         h5_ent_jersey = h5_ent_jersey)
+
+
+twelve_poss <- twelve_poss %>% 
+  mutate(quarter_processed = case_when(
+    quarter == 1 ~ "1ST",
+    quarter == 2 ~ "2ND",
+    quarter == 3 ~ "3RD",
+    quarter == 4 ~ "4TH",
+    TRUE ~ "NA"
+  )) %>% 
+  mutate(game_clock_minutes = game_clock %/% 60) %>% 
+  mutate(game_clock_seconds = game_clock %% 60)
+
+
+twelve_poss_quarter <- twelve_poss %>% 
+  pull(quarter_processed) %>% 
+  first()
+
+
+
+
+
+# Save animation as object
+pbp_anim <- fullcourt() +
+  # Home Players + Jersey Numbers
+  geom_point(data = twelve_poss, aes(x = h1_x, y = h1_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = twelve_poss, aes(x = h1_x, y = h1_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = twelve_poss, aes(x = h2_x, y = h2_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = twelve_poss, aes(x = h2_x, y = h2_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = twelve_poss, aes(x = h3_x, y = h3_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = twelve_poss, aes(x = h3_x, y = h3_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = twelve_poss, aes(x = h4_x, y = h4_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = twelve_poss, aes(x = h4_x, y = h4_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = twelve_poss, aes(x = h5_x, y = h5_y, group = possID), size = 6, color = "lightskyblue1") + 
+  geom_text(data = twelve_poss, aes(x = h5_x, y = h5_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  # Away Players
+  geom_point(data = twelve_poss, aes(x = a1_x, y = a1_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = twelve_poss, aes(x = a1_x, y = a1_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = twelve_poss, aes(x = a2_x, y = a2_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = twelve_poss, aes(x = a2_x, y = a2_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = twelve_poss, aes(x = a3_x, y = a3_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = twelve_poss, aes(x = a3_x, y = a3_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = twelve_poss, aes(x = a4_x, y = a4_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = twelve_poss, aes(x = a4_x, y = a4_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = twelve_poss, aes(x = a5_x, y = a5_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = twelve_poss, aes(x = a5_x, y = a5_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = twelve_poss, aes(x = x, y = y, group = possID), size = 3, color = "gold") +
+  transition_time(time = -game_clock) +
+  ggtitle(paste0(twelve_poss_quarter, " ",  "{-frame_time %/% 60}", ":", "{round(-frame_time %% 60, 2)}")) +
+  theme(plot.title = element_text(hjust = 0.5))
+
+
+
+epv_curve <- e.dat %>% 
+  filter(possID == 12)
+
+# Save animation as object
+epv_anim <- epv_curve %>% 
+  ggplot(aes(x = 720 - game_clock, y = epv.smooth)) +
+  geom_path() +
+  transition_reveal(720 - game_clock) +
+  labs(x = "Time (Seconds)",
+       y = "EPV",
+       title = "Possession #12 EPV") 
+
+
+# Save as gif
+pbp_gif <- animate(pbp_anim, width = 480, height = 480)
+epv_gif <- animate(epv_anim, width = 480, height = 480)
+
+pbp_mgif <- image_read(pbp_gif)
+epv_mgif <- image_read(epv_gif)
+
+pbp_epv_gif <- image_append(c(epv_mgif[1], pbp_mgif[1]), stack = TRUE)
+for(ii in 2:100){
+  combined <- image_append(c(epv_mgif[ii], pbp_mgif[ii]), stack = TRUE)
+  pbp_epv_gif <- c(pbp_epv_gif, combined)
+}
+
+pbp_epv_gif
+
+```
+
+
+
+
+# Overall Function to create Gifs with Jersey Numbers
+
+```{r}
+make_poss_gif <- function(poss_num) {
+  
+  e.dat <- e.dat %>% 
+  filter(possID == poss_num)
+
+# Replace _ent with jersey numbers
+a1_ent_jersey <- e.dat %>% 
+  pull(a1_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+a2_ent_jersey <- e.dat %>% 
+  pull(a2_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+a3_ent_jersey <- e.dat %>% 
+  pull(a3_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+a4_ent_jersey <- e.dat %>% 
+  pull(a4_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+a5_ent_jersey <- e.dat %>% 
+  pull(a5_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h1_ent_jersey <- e.dat %>% 
+  pull(h1_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h2_ent_jersey <- e.dat %>% 
+  pull(h2_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h3_ent_jersey <- e.dat %>% 
+  pull(h3_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h4_ent_jersey <- e.dat %>% 
+  pull(h4_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h5_ent_jersey <- e.dat %>% 
+  pull(h5_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+# Mutate jersey number columns
+e.dat <- e.dat %>% 
+  mutate(a1_ent_jersey = a1_ent_jersey,
+         a2_ent_jersey = a2_ent_jersey,
+         a3_ent_jersey = a3_ent_jersey,
+         a4_ent_jersey = a4_ent_jersey,
+         a5_ent_jersey = a5_ent_jersey,
+         h1_ent_jersey = h1_ent_jersey,
+         h2_ent_jersey = h2_ent_jersey,
+         h3_ent_jersey = h3_ent_jersey,
+         h4_ent_jersey = h4_ent_jersey,
+         h5_ent_jersey = h5_ent_jersey) %>% 
+  mutate(quarter_processed = case_when(
+    quarter == 1 ~ "1ST",
+    quarter == 2 ~ "2ND",
+    quarter == 3 ~ "3RD",
+    quarter == 4 ~ "4TH",
+    TRUE ~ "NA"
+  )) %>% 
+  mutate(game_clock_minutes = game_clock %/% 60) %>% 
+  mutate(game_clock_seconds = game_clock %% 60)
+
+
+possid_quarter <- e.dat %>% 
+  pull(quarter_processed) %>% 
+  first()
+
+
+# Save animation as object
+anim <- fullcourt() +
+  # Home Players + Jersey Numbers
+  geom_point(data = e.dat, aes(x = h1_x, y = h1_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = e.dat, aes(x = h1_x, y = h1_y, group = possID, label = h1_ent_jersey), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat, aes(x = h2_x, y = h2_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = e.dat, aes(x = h2_x, y = h2_y, group = possID, label = h2_ent_jersey), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat, aes(x = h3_x, y = h3_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = e.dat, aes(x = h3_x, y = h3_y, group = possID, label = h3_ent_jersey), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat, aes(x = h4_x, y = h4_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = e.dat, aes(x = h4_x, y = h4_y, group = possID, label = h4_ent_jersey), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat, aes(x = h5_x, y = h5_y, group = possID), size = 6, color = "lightskyblue1") + 
+  geom_text(data = e.dat, aes(x = h5_x, y = h5_y, group = possID, label = h5_ent_jersey), color = 'black', alpha = 0.3) + 
+  
+  # Away Players
+  geom_point(data = e.dat, aes(x = a1_x, y = a1_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = e.dat, aes(x = a1_x, y = a1_y, group = possID, label = a1_ent_jersey), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat, aes(x = a2_x, y = a2_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = e.dat, aes(x = a2_x, y = a2_y, group = possID, label = a2_ent_jersey), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat, aes(x = a3_x, y = a3_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = e.dat, aes(x = a3_x, y = a3_y, group = possID, label = a3_ent_jersey), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat, aes(x = a4_x, y = a4_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = e.dat, aes(x = a4_x, y = a4_y, group = possID, label = a4_ent_jersey), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat, aes(x = a5_x, y = a5_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = e.dat, aes(x = a5_x, y = a5_y, group = possID, label = a5_ent_jersey), color = 'black', alpha = 0.3) + 
+  
+  # Ball
+  geom_point(data = e.dat, aes(x = x, y = y, group = possID), size = 3, color = "gold") +
+  
+  transition_time(time = -game_clock) +
+  ggtitle(paste0(possid_quarter, " ",  "{-frame_time %/% 60}", ":", "{round(-frame_time %% 60, 0)}")) +
+  theme(plot.title = element_text(hjust = 0.5))
+
+
+
+
+
+
+epv_curve <-  e.dat %>%  
+  mutate_at(vars(contains("event")), 
+            funs(case_when(
+              . == 1 ~ "Free Throw Made",
+              . == 2 ~ "Free Throw Missed",
+              . == 3 ~ "Shot Made",
+              . == 4 ~ "Shot Missed",
+              . == 5 ~ "Offensive Rebound",
+              . == 6 ~ "Defensive Rebound",
+              . == 7 ~ "Turnover",
+              . == 8 ~ "Foul",
+              . == 9 ~ "Violation",
+              . == 10 ~ "Substitution",
+              . == 11 ~ "Timeout",
+              . == 12 ~ "Jump Ball",
+              . == 13 ~ "Ejection",
+              . == 14 ~ "Start Period",
+              . == 15 ~ "End Period",
+              . == 16 ~ "Clock Sync",
+              . == 17 ~ "Instant Replay",
+              . == 18 ~ "Replay Ruling",
+              . == 19 ~ "Game Over",
+              . == 20 ~ "Stoppage",
+              . == 21 ~ "Dribble",
+              . == 22 ~ "Pass",
+              . == 23 ~ "Possession",
+              . == 24 ~ "Shot Block",
+              . == 25 ~ "Assist",
+              TRUE ~ ""
+            )
+            
+            ))
+
+
+epv_anim <- epv_curve %>% 
+  ggplot(aes(x = 720 - game_clock, y = epv.smooth)) +
+  geom_path() +
+  scale_x_continuous(labels = NULL) +
+  transition_reveal(720 - game_clock) +
+  labs(x = NULL,
+       y = "EPV",
+       title = paste0("Possession ID ", poss_num)) +
+   theme(plot.title = element_text(hjust = 0.5))
+  
+
+
+# Save as gif
+pbp_gif <- animate(anim, width = 600, height = 240, fps = 7)
+epv_gif <- animate(epv_anim, width = 600, height = 240, fps = 7)
+
+pbp_mgif <- image_read(pbp_gif)
+epv_mgif <- image_read(epv_gif)
+
+pbp_epv_gif <- image_append(c(epv_mgif[1], pbp_mgif[1]), stack = TRUE)
+
+for(ii in 2:100){
+ combined <- image_append(c(epv_mgif[ii], pbp_mgif[ii]), stack = TRUE)
+ pbp_epv_gif <- c(pbp_epv_gif, combined)
+}
+
+pbp_epv_gif
+
+image_write(pbp_epv_gif, paste0("./anim-", poss_num, ".GIF"))
+  
+}
+```
+
+# Overall Function without Jersey Numbers
+
+```{r}
+make_poss_gif_without <- function(poss_num) {
+  
+  e.dat <- e.dat %>% 
+    filter(possID == poss_num)
+  
+  
+  # Mutate jersey number columns
+  e.dat <- e.dat %>% 
+    mutate(quarter_processed = case_when(
+      quarter == 1 ~ "1ST",
+      quarter == 2 ~ "2ND",
+      quarter == 3 ~ "3RD",
+      quarter == 4 ~ "4TH",
+      TRUE ~ "NA"
+    )) %>% 
+    mutate(game_clock_minutes = game_clock %/% 60) %>% 
+    mutate(game_clock_seconds = game_clock %% 60)
+  
+  
+  possid_quarter <- e.dat %>% 
+    pull(quarter_processed) %>% 
+    first()
+  
+  
+  # Save animation as object
+  anim <- fullcourt() +
+    # Home Players + Jersey Numbers
+    geom_point(data = e.dat, aes(x = h1_x, y = h1_y, group = possID), size = 6, color = "lightskyblue1") + 
+    
+    geom_point(data = e.dat, aes(x = h2_x, y = h2_y, group = possID), size = 6, color = "lightskyblue1") +  
+    
+    geom_point(data = e.dat, aes(x = h3_x, y = h3_y, group = possID), size = 6, color = "lightskyblue1") +  
+    
+    
+    geom_point(data = e.dat, aes(x = h4_x, y = h4_y, group = possID), size = 6, color = "lightskyblue1") +  
+    
+    geom_point(data = e.dat, aes(x = h5_x, y = h5_y, group = possID), size = 6, color = "lightskyblue1") + 
+    
+    # Away Players
+    geom_point(data = e.dat, aes(x = a1_x, y = a1_y, group = possID), size = 6, color = "salmon1") +  
+    
+    geom_point(data = e.dat, aes(x = a2_x, y = a2_y, group = possID), size = 6, color = "salmon1") +  
+    
+    geom_point(data = e.dat, aes(x = a3_x, y = a3_y, group = possID), size = 6, color = "salmon1") +  
+    
+    
+    geom_point(data = e.dat, aes(x = a4_x, y = a4_y, group = possID), size = 6, color = "salmon1") +  
+    
+    
+    geom_point(data = e.dat, aes(x = a5_x, y = a5_y, group = possID), size = 6, color = "salmon1") +  
+    
+    
+    # Ball
+    geom_point(data = e.dat, aes(x = x, y = y, group = possID), size = 3, color = "gold") +
+    
+    transition_time(time = -game_clock) +
+    ggtitle(paste0(possid_quarter, " ",  "{-frame_time %/% 60}", ":", "{round(-frame_time %% 60, 0)}")) +
+    theme(plot.title = element_text(hjust = 0.5))
+  
+  
+  
+  
+  
+  
+  epv_curve <-  e.dat %>%  
+    mutate_at(vars(contains("event")), 
+              funs(case_when(
+                . == 1 ~ "Free Throw Made",
+                . == 2 ~ "Free Throw Missed",
+                . == 3 ~ "Shot Made",
+                . == 4 ~ "Shot Missed",
+                . == 5 ~ "Offensive Rebound",
+                . == 6 ~ "Defensive Rebound",
+                . == 7 ~ "Turnover",
+                . == 8 ~ "Foul",
+                . == 9 ~ "Violation",
+                . == 10 ~ "Substitution",
+                . == 11 ~ "Timeout",
+                . == 12 ~ "Jump Ball",
+                . == 13 ~ "Ejection",
+                . == 14 ~ "Start Period",
+                . == 15 ~ "End Period",
+                . == 16 ~ "Clock Sync",
+                . == 17 ~ "Instant Replay",
+                . == 18 ~ "Replay Ruling",
+                . == 19 ~ "Game Over",
+                . == 20 ~ "Stoppage",
+                . == 21 ~ "Dribble",
+                . == 22 ~ "Pass",
+                . == 23 ~ "Possession",
+                . == 24 ~ "Shot Block",
+                . == 25 ~ "Assist",
+                TRUE ~ ""
+              )
+              
+              ))
+  
+  
+  epv_anim <- epv_curve %>% 
+    ggplot(aes(x = 720 - game_clock, y = epv.smooth)) +
+    geom_path() +
+    scale_x_continuous(labels = NULL) +
+    transition_reveal(720 - game_clock) +
+    labs(x = NULL,
+         y = "EPV",
+         title = paste0("Possession ID ", poss_num)) +
+    theme(plot.title = element_text(hjust = 0.5))
+  
+  
+  
+  # Save as gif
+  pbp_gif <- animate(anim, width = 600, height = 240, fps = 7)
+  epv_gif <- animate(epv_anim, width = 600, height = 240, fps = 7)
+  
+  pbp_mgif <- image_read(pbp_gif)
+  epv_mgif <- image_read(epv_gif)
+  
+  pbp_epv_gif <- image_append(c(epv_mgif[1], pbp_mgif[1]), stack = TRUE)
+  
+  for(ii in 2:100){
+    combined <- image_append(c(epv_mgif[ii], pbp_mgif[ii]), stack = TRUE)
+    pbp_epv_gif <- c(pbp_epv_gif, combined)
+  }
+  
+  pbp_epv_gif
+  
+  image_write(pbp_epv_gif, paste0("./anim-", poss_num, ".GIF"))
+  
+}
+```
+
+
+
+# BlogPost: Final 1 Minute of Game: https://www.youtube.com/watch?v=6eYWIpqD-io
+
+Motivation for observing real game film -> Pg 24 of Full Paper:
+
+Indeed, regardless of the complexity and refinement of an EPV model, we stress that the full resolution data still omits key information, such as the positioning of the players' hands and feet, their heights when jumping, and other variables that impact basketball outcomes. As such, analyses based on EPV are best accompanied by actual game film and the insight of a basketball expert
+
+# E.dat Notes
+
+probs.pass1, probs.pass2, probs.pass3, probs.pass4 are macrotransition probabilities
+vals.pass1, vals.pass2, vals.pass3, vals.pass4 are macrotransition values
+
+<From POINTWISE: Predicting Points and Valuing Decisions in Real Time with NBA Optical Tracking Data>
+Macrotransition: discrete actions that may take several seconds to complete (passing)
+= P(macro in t | d)
+
+
+## IMPORTANT: e.dat is the SAME dataset as pbp except e.dat has additional info on epb, probs, vals, etc
+
+
+probs.pass1-5 should have 0% instead of NA values
+
+
+## Poss ID 228 (Starts at 1min 13 seconds): Paul Pierce missed shot
+```{r}
+# Filter for Poss ID 228
+e.dat_228 <- e.dat %>% filter(possID == 228)
+# 
+# # Compare e.dat_228 with possid_228 to see if I can use e.dat_228 for gganimate code instead of having to combine e.dat_228 and possid_228
+# e.dat_228_processed <- e.dat_228 %>% 
+#   select(1:49)
+# 
+# all.equal(e.dat_228_processed, e.dat_228)
+# dim(e.dat_228_processed)
+# dim(e.dat_228)
+
+### RESULT: PRETTY EQUAL
+
+
+# Replace _ent with jersey numbers
+a1_ent_jersey <- e.dat_228 %>% 
+  pull(a1_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+a2_ent_jersey <- e.dat_228 %>% 
+  pull(a2_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+a3_ent_jersey <- e.dat_228 %>% 
+  pull(a3_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+a4_ent_jersey <- e.dat_228 %>% 
+  pull(a4_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+a5_ent_jersey <- e.dat_228 %>% 
+  pull(a5_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h1_ent_jersey <- e.dat_228 %>% 
+  pull(h1_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h2_ent_jersey <- e.dat_228 %>% 
+  pull(h2_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h3_ent_jersey <- e.dat_228 %>% 
+  pull(h3_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h4_ent_jersey <- e.dat_228 %>% 
+  pull(h4_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h5_ent_jersey <- e.dat_228 %>% 
+  pull(h5_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+# Mutate jersey number columns
+e.dat_228 <- e.dat_228 %>% 
+  mutate(a1_ent_jersey = a1_ent_jersey,
+         a2_ent_jersey = a2_ent_jersey,
+         a3_ent_jersey = a3_ent_jersey,
+         a4_ent_jersey = a4_ent_jersey,
+         a5_ent_jersey = a5_ent_jersey,
+         h1_ent_jersey = h1_ent_jersey,
+         h2_ent_jersey = h2_ent_jersey,
+         h3_ent_jersey = h3_ent_jersey,
+         h4_ent_jersey = h4_ent_jersey,
+         h5_ent_jersey = h5_ent_jersey)
+
+
+e.dat_228 <- e.dat_228 %>% 
+  mutate(quarter_processed = case_when(
+    quarter == 1 ~ "1ST",
+    quarter == 2 ~ "2ND",
+    quarter == 3 ~ "3RD",
+    quarter == 4 ~ "4TH",
+    TRUE ~ "NA"
+  )) %>% 
+  mutate(game_clock_minutes = game_clock %/% 60) %>% 
+  mutate(game_clock_seconds = game_clock %% 60)
+
+
+possid_228_quarter <- e.dat_228 %>% 
+  pull(quarter_processed) %>% 
+  first()
+
+anim_228 <- fullcourt() +
+  # Home Players + Jersey Numbers
+  geom_point(data = e.dat_228, aes(x = h1_x, y = h1_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = e.dat_228, aes(x = h1_x, y = h1_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_228, aes(x = h2_x, y = h2_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = e.dat_228, aes(x = h2_x, y = h2_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_228, aes(x = h3_x, y = h3_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = e.dat_228, aes(x = h3_x, y = h3_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_228, aes(x = h4_x, y = h4_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = e.dat_228, aes(x = h4_x, y = h4_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_228, aes(x = h5_x, y = h5_y, group = possID), size = 6, color = "lightskyblue1") + 
+  geom_text(data = e.dat_228, aes(x = h5_x, y = h5_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  # Away Players
+  geom_point(data = e.dat_228, aes(x = a1_x, y = a1_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = e.dat_228, aes(x = a1_x, y = a1_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_228, aes(x = a2_x, y = a2_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = e.dat_228, aes(x = a2_x, y = a2_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_228, aes(x = a3_x, y = a3_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = e.dat_228, aes(x = a3_x, y = a3_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_228, aes(x = a4_x, y = a4_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = e.dat_228, aes(x = a4_x, y = a4_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_228, aes(x = a5_x, y = a5_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = e.dat_228, aes(x = a5_x, y = a5_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_228, aes(x = x, y = y, group = possID), size = 3, color = "gold") +
+  transition_time(time = -game_clock) +
+  ggtitle(paste0(possid_228_quarter, " ",  "{-frame_time %/% 60}", ":", "{round(-frame_time %% 60, 2)}")) +
+  theme(plot.title = element_text(hjust = 0.5))
+
+epv_curve_228 <- e.dat %>% 
+  filter(possID == 228) %>% 
+  mutate_at(vars(contains("event")), 
+            funs(case_when(
+              . == 1 ~ "Free Throw Made",
+              . == 2 ~ "Free Throw Missed",
+              . == 3 ~ "Shot Made",
+              . == 4 ~ "Shot Missed",
+              . == 5 ~ "Offensive Rebound",
+              . == 6 ~ "Defensive Rebound",
+              . == 7 ~ "Turnover",
+              . == 8 ~ "Foul",
+              . == 9 ~ "Violation",
+              . == 10 ~ "Substitution",
+              . == 11 ~ "Timeout",
+              . == 12 ~ "Jump Ball",
+              . == 13 ~ "Ejection",
+              . == 14 ~ "Start Period",
+              . == 15 ~ "End Period",
+              . == 16 ~ "Clock Sync",
+              . == 17 ~ "Instant Replay",
+              . == 18 ~ "Replay Ruling",
+              . == 19 ~ "Game Over",
+              . == 20 ~ "Stoppage",
+              . == 21 ~ "Dribble",
+              . == 22 ~ "Pass",
+              . == 23 ~ "Possession",
+              . == 24 ~ "Shot Block",
+              . == 25 ~ "Assist",
+              TRUE ~ ""
+            )
+            
+            ))
+
+
+# Gather all events into one column
+epv_curve_228 <- epv_curve_228 %>% 
+  gather("player", "event", c(a1_event, a2_event, a3_event, a4_event, a5_event,
+                              h1_event, h2_event, h3_event, h4_event, h5_event)) %>% 
+  mutate(event = if_else(is.na(event), "", event))
+
+
+
+  
+epv_anim_228 <- epv_curve_228 %>% 
+  ggplot() +
+  geom_path(aes(x = 720 - game_clock, y = epv.smooth)) +
+  transition_reveal(720 - game_clock) +
+  labs(x = NULL,
+       y = "EPV",
+       title = "Possession ID 228") +
+  scale_x_continuous(labels = NULL) +
+  theme(plot.title = element_text(hjust = 0.5))
+
+# Save as gif
+pbp_gif_228 <- animate(anim_228, width = 600, height = 240)
+epv_gif_228 <- animate(epv_anim_228, width = 600, height = 240)
+
+pbp_mgif <- image_read(pbp_gif_228)
+epv_mgif <- image_read(epv_gif_228)
+
+pbp_epv_gif <- image_append(c(epv_mgif[1], pbp_mgif[1]), stack = TRUE)
+for(ii in 2:100){
+  combined <- image_append(c(epv_mgif[ii], pbp_mgif[ii]), stack = TRUE)
+  pbp_epv_gif <- c(pbp_epv_gif, combined)
+}
+
+pbp_epv_gif
+```
+
+
+### Static Version
+```{r}
+epv_curve_228 %>%
+  # Take out repetitive events
+  mutate(game_clock_processed = 720 - game_clock,
+         event = if_else(game_clock_processed < 642, "", event)) %>% 
+  ggplot(aes(x = 720 - game_clock, y = epv.smooth)) +
+  geom_path() +
+  geom_label_repel(arrow = arrow(length = unit(0.035, "npc"), type = "open", ends = "first"),
+                   force = 10,
+                   nudge_x = 1.2)+
+  labs(x = "Game Clock",
+       y = "EPV",
+       title = "\"Crowd starting to sense victory\"") +
+  scale_x_continuous(breaks=c(640, 645, 650, 655),
+                     labels = c("10:40", "10:45", "10:50", "10:55")) +
+   theme(plot.title = element_text(hjust = 0.5))
+```
+
+
+
+## Poss ID 229 (Starts at 1min 03 seconds) After James drives the net, he passes to sb and after 2 more passes around the 3 points line, Wade throws in a right corner 3 pointer
+```{r}
+e.dat_229 <- e.dat %>% 
+  filter(possID == 229)
+
+
+# Replace _ent with jersey numbers
+a1_ent_jersey <- e.dat_229 %>% 
+  pull(a1_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+a2_ent_jersey <- e.dat_229 %>% 
+  pull(a2_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+a3_ent_jersey <- e.dat_229 %>% 
+  pull(a3_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+a4_ent_jersey <- e.dat_229 %>% 
+  pull(a4_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+a5_ent_jersey <- e.dat_229 %>% 
+  pull(a5_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h1_ent_jersey <- e.dat_229 %>% 
+  pull(h1_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h2_ent_jersey <- e.dat_229 %>% 
+  pull(h2_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h3_ent_jersey <- e.dat_229 %>% 
+  pull(h3_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h4_ent_jersey <- e.dat_229 %>% 
+  pull(h4_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h5_ent_jersey <- e.dat_229 %>% 
+  pull(h5_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+# Mutate jersey number columns
+e.dat_229 <- e.dat_229 %>% 
+  mutate(a1_ent_jersey = a1_ent_jersey,
+         a2_ent_jersey = a2_ent_jersey,
+         a3_ent_jersey = a3_ent_jersey,
+         a4_ent_jersey = a4_ent_jersey,
+         a5_ent_jersey = a5_ent_jersey,
+         h1_ent_jersey = h1_ent_jersey,
+         h2_ent_jersey = h2_ent_jersey,
+         h3_ent_jersey = h3_ent_jersey,
+         h4_ent_jersey = h4_ent_jersey,
+         h5_ent_jersey = h5_ent_jersey)
+
+
+e.dat_229 <- e.dat_229 %>% 
+  mutate(quarter_processed = case_when(
+    quarter == 1 ~ "1ST",
+    quarter == 2 ~ "2ND",
+    quarter == 3 ~ "3RD",
+    quarter == 4 ~ "4TH",
+    TRUE ~ "NA"
+  )) %>% 
+  mutate(game_clock_minutes = game_clock %/% 60) %>% 
+  mutate(game_clock_seconds = game_clock %% 60)
+
+
+possid_229_quarter <- e.dat_229 %>% 
+  pull(quarter_processed) %>% 
+  first()
+
+
+
+
+
+# Save animation as object
+anim_229 <- fullcourt() +
+  # Home Players + Jersey Numbers
+  geom_point(data = e.dat_229, aes(x = h1_x, y = h1_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = e.dat_229, aes(x = h1_x, y = h1_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_229, aes(x = h2_x, y = h2_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = e.dat_229, aes(x = h2_x, y = h2_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_229, aes(x = h3_x, y = h3_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = e.dat_229, aes(x = h3_x, y = h3_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_229, aes(x = h4_x, y = h4_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = e.dat_229, aes(x = h4_x, y = h4_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_229, aes(x = h5_x, y = h5_y, group = possID), size = 6, color = "lightskyblue1") + 
+  geom_text(data = e.dat_229, aes(x = h5_x, y = h5_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  # Away Players
+  geom_point(data = e.dat_229, aes(x = a1_x, y = a1_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = e.dat_229, aes(x = a1_x, y = a1_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_229, aes(x = a2_x, y = a2_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = e.dat_229, aes(x = a2_x, y = a2_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_229, aes(x = a3_x, y = a3_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = e.dat_229, aes(x = a3_x, y = a3_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_229, aes(x = a4_x, y = a4_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = e.dat_229, aes(x = a4_x, y = a4_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_229, aes(x = a5_x, y = a5_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = e.dat_229, aes(x = a5_x, y = a5_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_229, aes(x = x, y = y, group = possID), size = 3, color = "gold") +
+  transition_time(time = -game_clock) +
+  ggtitle(paste0(possid_229_quarter, " ",  "{-frame_time %/% 60}", ":", "{round(-frame_time %% 60, 2)}")) +
+  theme(plot.title = element_text(hjust = 0.5))
+
+
+epv_curve_229 <- e.dat_229 %>%  
+  mutate_at(vars(contains("event")), 
+            funs(case_when(
+              . == 1 ~ "Free Throw Made",
+              . == 2 ~ "Free Throw Missed",
+              . == 3 ~ "Shot Made",
+              . == 4 ~ "Shot Missed",
+              . == 5 ~ "Offensive Rebound",
+              . == 6 ~ "Defensive Rebound",
+              . == 7 ~ "Turnover",
+              . == 8 ~ "Foul",
+              . == 9 ~ "Violation",
+              . == 10 ~ "Substitution",
+              . == 11 ~ "Timeout",
+              . == 12 ~ "Jump Ball",
+              . == 13 ~ "Ejection",
+              . == 14 ~ "Start Period",
+              . == 15 ~ "End Period",
+              . == 16 ~ "Clock Sync",
+              . == 17 ~ "Instant Replay",
+              . == 18 ~ "Replay Ruling",
+              . == 19 ~ "Game Over",
+              . == 20 ~ "Stoppage",
+              . == 21 ~ "Dribble",
+              . == 22 ~ "Pass",
+              . == 23 ~ "Possession",
+              . == 24 ~ "Shot Block",
+              . == 25 ~ "Assist",
+              TRUE ~ ""
+            )
+            
+            ))
+
+
+# Gather all events into one column
+epv_curve_229 <- epv_curve_229 %>% 
+  gather("player", "event", c(a1_event, a2_event, a3_event, a4_event, a5_event,
+                              h1_event, h2_event, h3_event, h4_event, h5_event)) %>% 
+  mutate(event = if_else(is.na(event), "", event))
+
+
+
+
+epv_anim_229 <- epv_curve_229 %>% 
+  ggplot(aes(x = 720 - game_clock, y = epv.smooth)) +
+  geom_path() +
+  scale_x_continuous(labels = NULL) +
+  transition_reveal(720 - game_clock) +
+  labs(x = NULL,
+       y = "EPV",
+       title = "Possession ID 229") +
+   theme(plot.title = element_text(hjust = 0.5))
+  
+
+# Save as gif
+pbp_gif <- animate(anim_229, width = 600, height = 240, fps = 8)
+epv_gif <- animate(epv_anim_229, width = 600, height = 240, fps = 8)
+
+pbp_mgif <- image_read(pbp_gif)
+epv_mgif <- image_read(epv_gif)
+
+pbp_epv_gif <- image_append(c(epv_mgif[1], pbp_mgif[1]), stack = TRUE)
+for(ii in 2:100){
+  combined <- image_append(c(epv_mgif[ii], pbp_mgif[ii]), stack = TRUE)
+  pbp_epv_gif <- c(pbp_epv_gif, combined)
+}
+
+pbp_epv_gif
+```
+
+
+### Static Version
+```{r}
+# Take out some events to declutter graph
+epv_curve_229 %>%
+  mutate(event = if_else(event %in% c("Dribble", "Possession"), "", event)) %>% 
+  ggplot(aes(x = 720 - game_clock, y = epv.smooth)) +
+  geom_path() +
+  geom_label_repel(arrow = arrow(length = unit(0.035, "npc"), type = "open", ends = "first"),
+                   force = 0.8, nudge_x = 0.1) +
+  labs(x = "Game Clock",
+       y = "EPV",
+       title = "\"James puts his head down and drives\"") +
+  scale_x_continuous(breaks=c(660, 665, 670),
+                     labels = c("11:00", "11:05", "11:10")) +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+
+
+
+
+
+
+## Poss ID 230 (Starts at 50 seconds and Ends at 33 seconds): Derron Williams passes to Garnett, who double clutches and misses 2 point shot
+```{r}
+e.dat_230 <- e.dat %>% 
+  filter(possID == 230)
+
+
+# Replace _ent with jersey numbers
+a1_ent_jersey <- e.dat_230 %>% 
+  pull(a1_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+a2_ent_jersey <- e.dat_230 %>% 
+  pull(a2_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+a3_ent_jersey <- e.dat_230 %>% 
+  pull(a3_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+a4_ent_jersey <- e.dat_230 %>% 
+  pull(a4_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+a5_ent_jersey <- e.dat_230 %>% 
+  pull(a5_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h1_ent_jersey <- e.dat_230 %>% 
+  pull(h1_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h2_ent_jersey <- e.dat_230 %>% 
+  pull(h2_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h3_ent_jersey <- e.dat_230 %>% 
+  pull(h3_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h4_ent_jersey <- e.dat_230 %>% 
+  pull(h4_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h5_ent_jersey <- e.dat_230 %>% 
+  pull(h5_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+# Mutate jersey number columns
+e.dat_230 <- e.dat_230 %>% 
+  mutate(a1_ent_jersey = a1_ent_jersey,
+         a2_ent_jersey = a2_ent_jersey,
+         a3_ent_jersey = a3_ent_jersey,
+         a4_ent_jersey = a4_ent_jersey,
+         a5_ent_jersey = a5_ent_jersey,
+         h1_ent_jersey = h1_ent_jersey,
+         h2_ent_jersey = h2_ent_jersey,
+         h3_ent_jersey = h3_ent_jersey,
+         h4_ent_jersey = h4_ent_jersey,
+         h5_ent_jersey = h5_ent_jersey)
+
+
+e.dat_230 <- e.dat_230 %>% 
+  mutate(quarter_processed = case_when(
+    quarter == 1 ~ "1ST",
+    quarter == 2 ~ "2ND",
+    quarter == 3 ~ "3RD",
+    quarter == 4 ~ "4TH",
+    TRUE ~ "NA"
+  )) %>% 
+  mutate(game_clock_minutes = game_clock %/% 60) %>% 
+  mutate(game_clock_seconds = game_clock %% 60)
+
+
+possid_230_quarter <- e.dat_230 %>% 
+  pull(quarter_processed) %>% 
+  first()
+
+
+
+
+
+# Save animation as object
+anim_230 <- fullcourt() +
+  # Home Players + Jersey Numbers
+  geom_point(data = e.dat_230, aes(x = h1_x, y = h1_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = e.dat_230, aes(x = h1_x, y = h1_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_230, aes(x = h2_x, y = h2_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = e.dat_230, aes(x = h2_x, y = h2_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_230, aes(x = h3_x, y = h3_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = e.dat_230, aes(x = h3_x, y = h3_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_230, aes(x = h4_x, y = h4_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = e.dat_230, aes(x = h4_x, y = h4_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_230, aes(x = h5_x, y = h5_y, group = possID), size = 6, color = "lightskyblue1") + 
+  geom_text(data = e.dat_230, aes(x = h5_x, y = h5_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  # Away Players
+  geom_point(data = e.dat_230, aes(x = a1_x, y = a1_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = e.dat_230, aes(x = a1_x, y = a1_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_230, aes(x = a2_x, y = a2_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = e.dat_230, aes(x = a2_x, y = a2_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_230, aes(x = a3_x, y = a3_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = e.dat_230, aes(x = a3_x, y = a3_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_230, aes(x = a4_x, y = a4_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = e.dat_230, aes(x = a4_x, y = a4_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_230, aes(x = a5_x, y = a5_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = e.dat_230, aes(x = a5_x, y = a5_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_230, aes(x = x, y = y, group = possID), size = 3, color = "gold") +
+  transition_time(time = -game_clock) +
+  ggtitle(paste0(possid_230_quarter, " ",  "{-frame_time %/% 60}", ":", "{round(-frame_time %% 60, 2)}")) +
+  theme(plot.title = element_text(hjust = 0.5))
+
+
+
+epv_curve_230 <- e.dat_230 %>%  
+  mutate_at(vars(contains("event")), 
+            funs(case_when(
+              . == 1 ~ "Free Throw Made",
+              . == 2 ~ "Free Throw Missed",
+              . == 3 ~ "Shot Made",
+              . == 4 ~ "Shot Missed",
+              . == 5 ~ "Offensive Rebound",
+              . == 6 ~ "Defensive Rebound",
+              . == 7 ~ "Turnover",
+              . == 8 ~ "Foul",
+              . == 9 ~ "Violation",
+              . == 10 ~ "Substitution",
+              . == 11 ~ "Timeout",
+              . == 12 ~ "Jump Ball",
+              . == 13 ~ "Ejection",
+              . == 14 ~ "Start Period",
+              . == 15 ~ "End Period",
+              . == 16 ~ "Clock Sync",
+              . == 17 ~ "Instant Replay",
+              . == 18 ~ "Replay Ruling",
+              . == 19 ~ "Game Over",
+              . == 20 ~ "Stoppage",
+              . == 21 ~ "Dribble",
+              . == 22 ~ "Pass",
+              . == 23 ~ "Possession",
+              . == 24 ~ "Shot Block",
+              . == 25 ~ "Assist",
+              TRUE ~ ""
+            )
+            
+            ))
+
+# NOTE: DON'T GATHER WHEN MAKING ANIMATION SINCE GATHERING RENDERS THE PLOT WEIRD
+# Gather all events into one column
+# epv_curve_230 <- epv_curve_230 %>% 
+#   gather("player", "event", c(a1_event, a2_event, a3_event, a4_event, a5_event,
+#                               h1_event, h2_event, h3_event, h4_event, h5_event)) %>% 
+#   mutate(event = if_else(is.na(event), "", event))
+
+
+
+
+epv_anim_230 <- epv_curve_230 %>% 
+  ggplot(aes(x = 720 - game_clock, y = epv.smooth)) +
+  geom_path() +
+  scale_x_continuous(labels = NULL) +
+  transition_reveal(720 - game_clock) +
+  labs(x = NULL,
+       y = "EPV",
+       title = "Possession ID 230") +
+   theme(plot.title = element_text(hjust = 0.5))
+  
+
+
+# Save as gif
+pbp_gif <- animate(anim_230, width = 600, height = 240, fps = 8)
+epv_gif <- animate(epv_anim_230, width = 600, height = 240, fps = 8)
+
+pbp_mgif <- image_read(pbp_gif)
+epv_mgif <- image_read(epv_gif)
+
+pbp_epv_gif <- image_append(c(epv_mgif[1], pbp_mgif[1]), stack = TRUE)
+for(ii in 2:100){
+  combined <- image_append(c(epv_mgif[ii], pbp_mgif[ii]), stack = TRUE)
+  pbp_epv_gif <- c(pbp_epv_gif, combined)
+}
+
+pbp_epv_gif
+```
+
+### Static Plot
+```{r}
+# Take out some events to declutter graph
+epv_curve_230 %>%
+  mutate_at(vars(contains("event")), funs(if_else(. == "Dribble", "", .))) %>% 
+  ggplot(aes(x = 720 - game_clock, y = epv.smooth)) +
+  geom_path() +
+  geom_label_repel(aes(x = 720 - game_clock, y = epv.smooth), force = 0.8, nudge_x = 0.5) +
+  geom_label_repel(aes(x = 720 - game_clock, y = epv.smooth), force = 0.8, nudge_x = 0.5) +
+  geom_label_repel(aes(x = 720 - game_clock, y = epv.smooth), force = 0.8, nudge_x = 0.5) +
+  geom_label_repel(aes(x = 720 - game_clock, y = epv.smooth), force = 0.8, nudge_x = 0.5) +
+  geom_label_repel(aes(x = 720 - game_clock, y = epv.smooth), force = 0.8, nudge_x = 0.5) +
+  geom_label_repel(aes(x = 720 - game_clock, y = epv.smooth), force = 0.8, nudge_x = 0.5) +
+  geom_label_repel(aes(x = 720 - game_clock, y = epv.smooth), force = 0.8, nudge_x = 0.5) +
+  geom_label_repel(aes(x = 720 - game_clock, y = epv.smooth), force = 0.8, nudge_x = 0.5) +
+  geom_label_repel(aes(x = 720 - game_clock, y = epv.smooth), force = 0.8, nudge_x = 0.5) +
+  geom_label_repel(aes(x = 720 - game_clock, y = epv.smooth), force = 0.8, nudge_x = 0.5) +
+  labs(x = "Game Clock",
+       y = "EPV",
+       title = "\"Garnett in the paint, double clutches, misses...\"") +
+  scale_x_continuous(breaks = c(670, 675, 680, 685),
+                     labels = c("11:10", "11:15", "11:20", "11:25")) +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+
+
+## Poss ID 231 (Starts at 33 seconds and Ends at 18 seconds): James throws the ball of the head of Anderson, Allen retrieves it to Chalmers, Gives it to Bosh, then to James, then back to Chalmers, who makes three point shot
+```{r}
+e.dat_231 <- e.dat %>% 
+  filter(possID == 231)
+
+
+# Replace _ent with jersey numbers
+a1_ent_jersey <- e.dat_231 %>% 
+  pull(a1_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+a2_ent_jersey <- e.dat_231 %>% 
+  pull(a2_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+a3_ent_jersey <- e.dat_231 %>% 
+  pull(a3_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+a4_ent_jersey <- e.dat_231 %>% 
+  pull(a4_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+a5_ent_jersey <- e.dat_231 %>% 
+  pull(a5_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h1_ent_jersey <- e.dat_231 %>% 
+  pull(h1_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h2_ent_jersey <- e.dat_231 %>% 
+  pull(h2_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h3_ent_jersey <- e.dat_231 %>% 
+  pull(h3_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h4_ent_jersey <- e.dat_231 %>% 
+  pull(h4_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h5_ent_jersey <- e.dat_231 %>% 
+  pull(h5_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+# Mutate jersey number columns
+e.dat_231 <- e.dat_231 %>% 
+  mutate(a1_ent_jersey = a1_ent_jersey,
+         a2_ent_jersey = a2_ent_jersey,
+         a3_ent_jersey = a3_ent_jersey,
+         a4_ent_jersey = a4_ent_jersey,
+         a5_ent_jersey = a5_ent_jersey,
+         h1_ent_jersey = h1_ent_jersey,
+         h2_ent_jersey = h2_ent_jersey,
+         h3_ent_jersey = h3_ent_jersey,
+         h4_ent_jersey = h4_ent_jersey,
+         h5_ent_jersey = h5_ent_jersey)
+
+
+e.dat_231 <- e.dat_231 %>% 
+  mutate(quarter_processed = case_when(
+    quarter == 1 ~ "1ST",
+    quarter == 2 ~ "2ND",
+    quarter == 3 ~ "3RD",
+    quarter == 4 ~ "4TH",
+    TRUE ~ "NA"
+  )) %>% 
+  mutate(game_clock_minutes = game_clock %/% 60) %>% 
+  mutate(game_clock_seconds = game_clock %% 60)
+
+
+possid_231_quarter <- e.dat_231 %>% 
+  pull(quarter_processed) %>% 
+  first()
+
+
+
+
+
+# Save animation as object
+anim_231 <- fullcourt() +
+  # Home Players + Jersey Numbers
+  geom_point(data = e.dat_231, aes(x = h1_x, y = h1_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = e.dat_231, aes(x = h1_x, y = h1_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_231, aes(x = h2_x, y = h2_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = e.dat_231, aes(x = h2_x, y = h2_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_231, aes(x = h3_x, y = h3_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = e.dat_231, aes(x = h3_x, y = h3_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_231, aes(x = h4_x, y = h4_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = e.dat_231, aes(x = h4_x, y = h4_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_231, aes(x = h5_x, y = h5_y, group = possID), size = 6, color = "lightskyblue1") + 
+  geom_text(data = e.dat_231, aes(x = h5_x, y = h5_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  # Away Players
+  geom_point(data = e.dat_231, aes(x = a1_x, y = a1_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = e.dat_231, aes(x = a1_x, y = a1_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_231, aes(x = a2_x, y = a2_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = e.dat_231, aes(x = a2_x, y = a2_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_231, aes(x = a3_x, y = a3_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = e.dat_231, aes(x = a3_x, y = a3_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_231, aes(x = a4_x, y = a4_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = e.dat_231, aes(x = a4_x, y = a4_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_231, aes(x = a5_x, y = a5_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = e.dat_231, aes(x = a5_x, y = a5_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_231, aes(x = x, y = y, group = possID), size = 3, color = "gold") +
+  transition_time(time = -game_clock) +
+  ggtitle(paste0(possid_231_quarter, " ",  "{-frame_time %/% 60}", ":", "{round(-frame_time %% 60, 2)}")) +
+  theme(plot.title = element_text(hjust = 0.5))
+
+
+epv_curve_231 <-  e.dat_231 %>%  
+  mutate_at(vars(contains("event")), 
+            funs(case_when(
+              . == 1 ~ "Free Throw Made",
+              . == 2 ~ "Free Throw Missed",
+              . == 3 ~ "Shot Made",
+              . == 4 ~ "Shot Missed",
+              . == 5 ~ "Offensive Rebound",
+              . == 6 ~ "Defensive Rebound",
+              . == 7 ~ "Turnover",
+              . == 8 ~ "Foul",
+              . == 9 ~ "Violation",
+              . == 10 ~ "Substitution",
+              . == 11 ~ "Timeout",
+              . == 12 ~ "Jump Ball",
+              . == 13 ~ "Ejection",
+              . == 14 ~ "Start Period",
+              . == 15 ~ "End Period",
+              . == 16 ~ "Clock Sync",
+              . == 17 ~ "Instant Replay",
+              . == 18 ~ "Replay Ruling",
+              . == 19 ~ "Game Over",
+              . == 20 ~ "Stoppage",
+              . == 21 ~ "Dribble",
+              . == 22 ~ "Pass",
+              . == 23 ~ "Possession",
+              . == 24 ~ "Shot Block",
+              . == 25 ~ "Assist",
+              TRUE ~ ""
+            )
+            
+            ))
+
+
+epv_anim_231 <- epv_curve_231 %>% 
+  ggplot(aes(x = 720 - game_clock, y = epv.smooth)) +
+  geom_path() +
+  scale_x_continuous(labels = NULL) +
+  transition_reveal(720 - game_clock) +
+  labs(x = NULL,
+       y = "EPV",
+       title = "Possession ID 231") +
+   theme(plot.title = element_text(hjust = 0.5))
+  
+
+
+# Save as gif
+pbp_gif <- animate(anim_231, width = 600, height = 240, fps = 7)
+epv_gif <- animate(epv_anim_231, width = 600, height = 240, fps = 7)
+
+pbp_mgif <- image_read(pbp_gif)
+epv_mgif <- image_read(epv_gif)
+
+pbp_epv_gif <- image_append(c(epv_mgif[1], pbp_mgif[1]), stack = TRUE)
+for(ii in 2:100){
+  combined <- image_append(c(epv_mgif[ii], pbp_mgif[ii]), stack = TRUE)
+  pbp_epv_gif <- c(pbp_epv_gif, combined)
+}
+
+pbp_epv_gif
+
+```
+
+### Static Plot
+```{r}
+# Gather all events into one column
+epv_curve_231 <- epv_curve_231 %>% 
+  gather("player", "event", c(a1_event, a2_event, a3_event, a4_event, a5_event,
+                              h1_event, h2_event, h3_event, h4_event, h5_event)) %>% 
+  mutate(event = if_else(is.na(event), "", event))
+
+# Declutter
+epv_curve_231 %>%
+  mutate(event = if_else(event %in% c("Foul", "Possession", "Dribble", "Shot Made"), "", event)) %>% 
+  ggplot(aes(x = 720 - game_clock, y = epv.smooth)) +
+  geom_path() +
+  geom_label_repel(arrow = arrow(length = unit(0.035, "npc"), type = "open", ends = "first"),
+                   force = 6, direction = "y", nudge_y = 0.2) +
+  labs(x = "Game Clock",
+       y = "EPV",
+       title = "\"James throws it off the head of Anderson!!!\"") +
+  scale_x_continuous(breaks = c(685, 690, 695, 700),
+                     labels = c("11:25", "11:30", "11:35", "11:40")) +
+  theme(plot.title = element_text(hjust = 0.5))
+
+
+
+```
+
+
+
+
+
+## Poss ID 232 (Starts at 17.5 seconds: Derron Williams Free throw): Williams Fouled Immediately by Chalmers
+
+No EPV measure for this possession
+```{r}
+e.dat_232 <- e.dat %>% 
+  filter(possID == 232)
+
+
+
+# Replace _ent with jersey numbers
+a1_ent_jersey <- e.dat_232 %>% 
+  pull(a1_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+a2_ent_jersey <- e.dat_232 %>% 
+  pull(a2_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+a3_ent_jersey <- e.dat_232 %>% 
+  pull(a3_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+a4_ent_jersey <- e.dat_232 %>% 
+  pull(a4_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+a5_ent_jersey <- e.dat_232 %>% 
+  pull(a5_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h1_ent_jersey <- e.dat_232 %>% 
+  pull(h1_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h2_ent_jersey <- e.dat_232 %>% 
+  pull(h2_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h3_ent_jersey <- e.dat_232 %>% 
+  pull(h3_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h4_ent_jersey <- e.dat_232 %>% 
+  pull(h4_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h5_ent_jersey <- e.dat_232 %>% 
+  pull(h5_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+# Mutate jersey number columns
+e.dat_232 <- e.dat_232 %>% 
+  mutate(a1_ent_jersey = a1_ent_jersey,
+         a2_ent_jersey = a2_ent_jersey,
+         a3_ent_jersey = a3_ent_jersey,
+         a4_ent_jersey = a4_ent_jersey,
+         a5_ent_jersey = a5_ent_jersey,
+         h1_ent_jersey = h1_ent_jersey,
+         h2_ent_jersey = h2_ent_jersey,
+         h3_ent_jersey = h3_ent_jersey,
+         h4_ent_jersey = h4_ent_jersey,
+         h5_ent_jersey = h5_ent_jersey)
+
+
+e.dat_232 <- e.dat_232 %>% 
+  mutate(quarter_processed = case_when(
+    quarter == 1 ~ "1ST",
+    quarter == 2 ~ "2ND",
+    quarter == 3 ~ "3RD",
+    quarter == 4 ~ "4TH",
+    TRUE ~ "NA"
+  )) %>% 
+  mutate(game_clock_minutes = game_clock %/% 60) %>% 
+  mutate(game_clock_seconds = game_clock %% 60)
+
+
+possid_232_quarter <- e.dat_232 %>% 
+  pull(quarter_processed) %>% 
+  first()
+
+
+
+
+
+# Save animation as object
+anim_232 <- fullcourt() +
+  # Home Players + Jersey Numbers
+  geom_point(data = e.dat_232, aes(x = h1_x, y = h1_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = e.dat_232, aes(x = h1_x, y = h1_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_232, aes(x = h2_x, y = h2_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = e.dat_232, aes(x = h2_x, y = h2_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_232, aes(x = h3_x, y = h3_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = e.dat_232, aes(x = h3_x, y = h3_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_232, aes(x = h4_x, y = h4_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = e.dat_232, aes(x = h4_x, y = h4_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_232, aes(x = h5_x, y = h5_y, group = possID), size = 6, color = "lightskyblue1") + 
+  geom_text(data = e.dat_232, aes(x = h5_x, y = h5_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  # Away Players
+  geom_point(data = e.dat_232, aes(x = a1_x, y = a1_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = e.dat_232, aes(x = a1_x, y = a1_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_232, aes(x = a2_x, y = a2_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = e.dat_232, aes(x = a2_x, y = a2_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_232, aes(x = a3_x, y = a3_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = e.dat_232, aes(x = a3_x, y = a3_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_232, aes(x = a4_x, y = a4_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = e.dat_232, aes(x = a4_x, y = a4_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_232, aes(x = a5_x, y = a5_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = e.dat_232, aes(x = a5_x, y = a5_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_232, aes(x = x, y = y, group = possID), size = 3, color = "gold") +
+  transition_time(time = -game_clock) +
+  ggtitle(paste0(possid_232_quarter, " ",  "{-frame_time %/% 60}", ":", "{round(-frame_time %% 60, 2)}")) +
+  theme(plot.title = element_text(hjust = 0.5))
+
+
+
+
+epv_curve_232 <-  e.dat_232 %>%  
+  mutate_at(vars(contains("event")), 
+            funs(case_when(
+              . == 1 ~ "Free Throw Made",
+              . == 2 ~ "Free Throw Missed",
+              . == 3 ~ "Shot Made",
+              . == 4 ~ "Shot Missed",
+              . == 5 ~ "Offensive Rebound",
+              . == 6 ~ "Defensive Rebound",
+              . == 7 ~ "Turnover",
+              . == 8 ~ "Foul",
+              . == 9 ~ "Violation",
+              . == 10 ~ "Substitution",
+              . == 11 ~ "Timeout",
+              . == 12 ~ "Jump Ball",
+              . == 13 ~ "Ejection",
+              . == 14 ~ "Start Period",
+              . == 15 ~ "End Period",
+              . == 16 ~ "Clock Sync",
+              . == 17 ~ "Instant Replay",
+              . == 18 ~ "Replay Ruling",
+              . == 19 ~ "Game Over",
+              . == 20 ~ "Stoppage",
+              . == 21 ~ "Dribble",
+              . == 22 ~ "Pass",
+              . == 23 ~ "Possession",
+              . == 24 ~ "Shot Block",
+              . == 25 ~ "Assist",
+              TRUE ~ ""
+            )
+            
+            ))
+
+
+epv_anim_232 <- epv_curve_232 %>% 
+  ggplot(aes(x = 720 - game_clock, y = epv.smooth)) +
+  geom_path() +
+  scale_x_continuous(labels = NULL) +
+  transition_reveal(720 - game_clock) +
+  labs(x = NULL,
+       y = "EPV",
+       title = "Possession ID 232") +
+   theme(plot.title = element_text(hjust = 0.5))
+  
+
+
+# Save as gif
+pbp_gif <- animate(anim_232, width = 600, height = 240, fps = 7)
+epv_gif <- animate(epv_anim_232, width = 600, height = 240, fps = 7)
+
+pbp_mgif <- image_read(pbp_gif)
+epv_mgif <- image_read(epv_gif)
+
+pbp_epv_gif <- image_append(c(epv_mgif[1], pbp_mgif[1]), stack = TRUE)
+for(ii in 2:100){
+  combined <- image_append(c(epv_mgif[ii], pbp_mgif[ii]), stack = TRUE)
+  pbp_epv_gif <- c(pbp_epv_gif, combined)
+}
+
+pbp_epv_gif
+
+
+
+```
+
+
+## Poss ID 233 (Foul on Allen Anderson at 7.9 seconds) Andersen foul on Ray Allen. Allen goes to Free Throw and shoots 2 throws
+```{r}
+e.dat_233 <- e.dat %>% 
+  filter(possID == 233)
+
+
+# Replace _ent with jersey numbers
+a1_ent_jersey <- e.dat_233 %>% 
+  pull(a1_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+a2_ent_jersey <- e.dat_233 %>% 
+  pull(a2_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+a3_ent_jersey <- e.dat_233 %>% 
+  pull(a3_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+a4_ent_jersey <- e.dat_233 %>% 
+  pull(a4_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+a5_ent_jersey <- e.dat_233 %>% 
+  pull(a5_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h1_ent_jersey <- e.dat_233 %>% 
+  pull(h1_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h2_ent_jersey <- e.dat_233 %>% 
+  pull(h2_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h3_ent_jersey <- e.dat_233 %>% 
+  pull(h3_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h4_ent_jersey <- e.dat_233 %>% 
+  pull(h4_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h5_ent_jersey <- e.dat_233 %>% 
+  pull(h5_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+# Mutate jersey number columns
+e.dat_233 <- e.dat_233 %>% 
+  mutate(a1_ent_jersey = a1_ent_jersey,
+         a2_ent_jersey = a2_ent_jersey,
+         a3_ent_jersey = a3_ent_jersey,
+         a4_ent_jersey = a4_ent_jersey,
+         a5_ent_jersey = a5_ent_jersey,
+         h1_ent_jersey = h1_ent_jersey,
+         h2_ent_jersey = h2_ent_jersey,
+         h3_ent_jersey = h3_ent_jersey,
+         h4_ent_jersey = h4_ent_jersey,
+         h5_ent_jersey = h5_ent_jersey)
+
+
+e.dat_233 <- e.dat_233 %>% 
+  mutate(quarter_processed = case_when(
+    quarter == 1 ~ "1ST",
+    quarter == 2 ~ "2ND",
+    quarter == 3 ~ "3RD",
+    quarter == 4 ~ "4TH",
+    TRUE ~ "NA"
+  )) %>% 
+  mutate(game_clock_minutes = game_clock %/% 60) %>% 
+  mutate(game_clock_seconds = game_clock %% 60)
+
+
+possid_233_quarter <- e.dat_233 %>% 
+  pull(quarter_processed) %>% 
+  first()
+
+
+
+
+
+# Save animation as object
+fullcourt() +
+  # Home Players + Jersey Numbers
+  geom_point(data = e.dat_233, aes(x = h1_x, y = h1_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = e.dat_233, aes(x = h1_x, y = h1_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_233, aes(x = h2_x, y = h2_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = e.dat_233, aes(x = h2_x, y = h2_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_233, aes(x = h3_x, y = h3_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = e.dat_233, aes(x = h3_x, y = h3_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_233, aes(x = h4_x, y = h4_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = e.dat_233, aes(x = h4_x, y = h4_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_233, aes(x = h5_x, y = h5_y, group = possID), size = 6, color = "lightskyblue1") + 
+  geom_text(data = e.dat_233, aes(x = h5_x, y = h5_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  # Away Players
+  geom_point(data = e.dat_233, aes(x = a1_x, y = a1_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = e.dat_233, aes(x = a1_x, y = a1_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_233, aes(x = a2_x, y = a2_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = e.dat_233, aes(x = a2_x, y = a2_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_233, aes(x = a3_x, y = a3_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = e.dat_233, aes(x = a3_x, y = a3_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_233, aes(x = a4_x, y = a4_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = e.dat_233, aes(x = a4_x, y = a4_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_233, aes(x = a5_x, y = a5_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = e.dat_233, aes(x = a5_x, y = a5_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_233, aes(x = x, y = y, group = possID), size = 3, color = "gold") +
+  transition_time(time = -game_clock) +
+  ggtitle(paste0(possid_233_quarter, " ",  "{-frame_time %/% 60}", ":", "{round(-frame_time %% 60, 2)}")) +
+  theme(plot.title = element_text(hjust = 0.5))
+
+
+
+
+
+
+epv_curve_233 <-  e.dat_233 %>%  
+  mutate_at(vars(contains("event")), 
+            funs(case_when(
+              . == 1 ~ "Free Throw Made",
+              . == 2 ~ "Free Throw Missed",
+              . == 3 ~ "Shot Made",
+              . == 4 ~ "Shot Missed",
+              . == 5 ~ "Offensive Rebound",
+              . == 6 ~ "Defensive Rebound",
+              . == 7 ~ "Turnover",
+              . == 8 ~ "Foul",
+              . == 9 ~ "Violation",
+              . == 10 ~ "Substitution",
+              . == 11 ~ "Timeout",
+              . == 12 ~ "Jump Ball",
+              . == 13 ~ "Ejection",
+              . == 14 ~ "Start Period",
+              . == 15 ~ "End Period",
+              . == 16 ~ "Clock Sync",
+              . == 17 ~ "Instant Replay",
+              . == 18 ~ "Replay Ruling",
+              . == 19 ~ "Game Over",
+              . == 20 ~ "Stoppage",
+              . == 21 ~ "Dribble",
+              . == 22 ~ "Pass",
+              . == 23 ~ "Possession",
+              . == 24 ~ "Shot Block",
+              . == 25 ~ "Assist",
+              TRUE ~ ""
+            )
+            
+            ))
+
+
+epv_anim_233 <- epv_curve_233 %>% 
+  ggplot(aes(x = 720 - game_clock, y = epv.smooth)) +
+  geom_path() +
+  scale_x_continuous(labels = NULL) +
+  transition_reveal(720 - game_clock) +
+  labs(x = NULL,
+       y = "EPV",
+       title = "Possession ID 233") +
+   theme(plot.title = element_text(hjust = 0.5))
+  
+
+
+# Save as gif
+pbp_gif <- animate(anim_232, width = 600, height = 240, fps = 7)
+epv_gif <- animate(epv_anim_232, width = 600, height = 240, fps = 7)
+
+pbp_mgif <- image_read(pbp_gif)
+epv_mgif <- image_read(epv_gif)
+
+pbp_epv_gif <- image_append(c(epv_mgif[1], pbp_mgif[1]), stack = TRUE)
+for(ii in 2:100){
+  combined <- image_append(c(epv_mgif[ii], pbp_mgif[ii]), stack = TRUE)
+  pbp_epv_gif <- c(pbp_epv_gif, combined)
+}
+
+pbp_epv_gif
+```
+
+
+PBP data stops at Poss ID 233!!!!
+
+
+
+
+
+
+# Full Game Highlights: 
+
+Nov 1st, 2013
+
+https://www.youtube.com/watch?v=NyjmxM2kLV0
+
+https://www.youtube.com/watch?v=71p2jV6cb8o
+
+
+### Poss ID 52
+
+highlights.mov 8 sec ~ 13 sec (Game time: 1st Quarter 1min 47sec)
+```{r}
+e.dat_52 <- e.dat %>% 
+  filter(possID == 52)
+
+
+# Replace _ent with jersey numbers
+a1_ent_jersey <- e.dat_52 %>% 
+  pull(a1_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+a2_ent_jersey <- e.dat_52 %>% 
+  pull(a2_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+a3_ent_jersey <- e.dat_52 %>% 
+  pull(a3_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+a4_ent_jersey <- e.dat_52 %>% 
+  pull(a4_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+a5_ent_jersey <- e.dat_52 %>% 
+  pull(a5_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h1_ent_jersey <- e.dat_52 %>% 
+  pull(h1_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h2_ent_jersey <- e.dat_52 %>% 
+  pull(h2_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h3_ent_jersey <- e.dat_52 %>% 
+  pull(h3_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h4_ent_jersey <- e.dat_52 %>% 
+  pull(h4_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h5_ent_jersey <- e.dat_52 %>% 
+  pull(h5_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+# Mutate jersey number columns
+e.dat_52 <- e.dat_52 %>% 
+  mutate(a1_ent_jersey = a1_ent_jersey,
+         a2_ent_jersey = a2_ent_jersey,
+         a3_ent_jersey = a3_ent_jersey,
+         a4_ent_jersey = a4_ent_jersey,
+         a5_ent_jersey = a5_ent_jersey,
+         h1_ent_jersey = h1_ent_jersey,
+         h2_ent_jersey = h2_ent_jersey,
+         h3_ent_jersey = h3_ent_jersey,
+         h4_ent_jersey = h4_ent_jersey,
+         h5_ent_jersey = h5_ent_jersey)
+
+
+e.dat_52 <- e.dat_52 %>% 
+  mutate(quarter_processed = case_when(
+    quarter == 1 ~ "1ST",
+    quarter == 2 ~ "2ND",
+    quarter == 3 ~ "3RD",
+    quarter == 4 ~ "4TH",
+    TRUE ~ "NA"
+  )) %>% 
+  mutate(game_clock_minutes = game_clock %/% 60) %>% 
+  mutate(game_clock_seconds = game_clock %% 60)
+
+
+possid_52_quarter <- e.dat_52 %>% 
+  pull(quarter_processed) %>% 
+  first()
+
+
+
+
+
+# Save animation as object
+anim_52 <- fullcourt() +
+  # Home Players + Jersey Numbers
+  geom_point(data = e.dat_52, aes(x = h1_x, y = h1_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = e.dat_52, aes(x = h1_x, y = h1_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_52, aes(x = h2_x, y = h2_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = e.dat_52, aes(x = h2_x, y = h2_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_52, aes(x = h3_x, y = h3_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = e.dat_52, aes(x = h3_x, y = h3_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_52, aes(x = h4_x, y = h4_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = e.dat_52, aes(x = h4_x, y = h4_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_52, aes(x = h5_x, y = h5_y, group = possID), size = 6, color = "lightskyblue1") + 
+  geom_text(data = e.dat_52, aes(x = h5_x, y = h5_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  # Away Players
+  geom_point(data = e.dat_52, aes(x = a1_x, y = a1_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = e.dat_52, aes(x = a1_x, y = a1_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_52, aes(x = a2_x, y = a2_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = e.dat_52, aes(x = a2_x, y = a2_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_52, aes(x = a3_x, y = a3_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = e.dat_52, aes(x = a3_x, y = a3_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_52, aes(x = a4_x, y = a4_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = e.dat_52, aes(x = a4_x, y = a4_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_52, aes(x = a5_x, y = a5_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = e.dat_52, aes(x = a5_x, y = a5_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_52, aes(x = x, y = y, group = possID), size = 3, color = "gold") +
+  transition_time(time = -game_clock) +
+  ggtitle(paste0(possid_52_quarter, " ",  "{-frame_time %/% 60}", ":", "{round(-frame_time %% 60, 0)}")) +
+  theme(plot.title = element_text(hjust = 0.5))
+
+
+
+
+
+
+epv_curve_52 <-  e.dat_52 %>%  
+  mutate_at(vars(contains("event")), 
+            funs(case_when(
+              . == 1 ~ "Free Throw Made",
+              . == 2 ~ "Free Throw Missed",
+              . == 3 ~ "Shot Made",
+              . == 4 ~ "Shot Missed",
+              . == 5 ~ "Offensive Rebound",
+              . == 6 ~ "Defensive Rebound",
+              . == 7 ~ "Turnover",
+              . == 8 ~ "Foul",
+              . == 9 ~ "Violation",
+              . == 10 ~ "Substitution",
+              . == 11 ~ "Timeout",
+              . == 12 ~ "Jump Ball",
+              . == 13 ~ "Ejection",
+              . == 14 ~ "Start Period",
+              . == 15 ~ "End Period",
+              . == 16 ~ "Clock Sync",
+              . == 17 ~ "Instant Replay",
+              . == 18 ~ "Replay Ruling",
+              . == 19 ~ "Game Over",
+              . == 20 ~ "Stoppage",
+              . == 21 ~ "Dribble",
+              . == 22 ~ "Pass",
+              . == 23 ~ "Possession",
+              . == 24 ~ "Shot Block",
+              . == 25 ~ "Assist",
+              TRUE ~ ""
+            )
+            
+            ))
+
+
+epv_anim_52 <- epv_curve_52 %>% 
+  ggplot(aes(x = 720 - game_clock, y = epv.smooth)) +
+  geom_path() +
+  scale_x_continuous(labels = NULL) +
+  transition_reveal(720 - game_clock) +
+  labs(x = NULL,
+       y = "EPV",
+       title = "Possession ID 52") +
+   theme(plot.title = element_text(hjust = 0.5))
+  
+
+
+# Save as gif
+pbp_gif <- animate(anim_52, width = 600, height = 240, fps = 7, renderer = av_renderer())
+epv_gif <- animate(epv_anim_52, width = 600, height = 240, fps = 7, renderer = av_renderer())
+
+# pbp_mgif <- image_read(pbp_gif)
+# epv_mgif <- image_read(epv_gif)
+# 
+# pbp_epv_gif <- image_append(c(epv_mgif[1], pbp_mgif[1]), stack = TRUE)
+# for(ii in 2:100){
+#   combined <- image_append(c(epv_mgif[ii], pbp_mgif[ii]), stack = TRUE)
+#   pbp_epv_gif <- c(pbp_epv_gif, combined)
+# }
+# 
+# pbp_epv_gif
+# 
+# # Save gif as GIF
+# image_write(pbp_epv_gif, "./combined-gifs/anim-52.GIF")
+```
+
+#### Static Plot
+
+```{r}
+e.dat_52 <- e.dat %>% 
+  filter(possID == 52)
+
+
+# Mutate jersey number columns
+e.dat_52 <- e.dat_52 %>% 
+  mutate(quarter_processed = case_when(
+    quarter == 1 ~ "1ST",
+    quarter == 2 ~ "2ND",
+    quarter == 3 ~ "3RD",
+    quarter == 4 ~ "4TH",
+    TRUE ~ "NA"
+  )) %>% 
+  mutate(game_clock_minutes = game_clock %/% 60) %>% 
+  mutate(game_clock_seconds = game_clock %% 60)
+
+epv_curve_52 <-  e.dat_52 %>%  
+  mutate_at(vars(contains("event")), 
+            funs(case_when(
+              . == 1 ~ "Free Throw Made",
+              . == 2 ~ "Free Throw Missed",
+              . == 3 ~ "Shot Made",
+              . == 4 ~ "Shot Missed",
+              . == 5 ~ "Offensive Rebound",
+              . == 6 ~ "Defensive Rebound",
+              . == 7 ~ "Turnover",
+              . == 8 ~ "Foul",
+              . == 9 ~ "Violation",
+              . == 10 ~ "Substitution",
+              . == 11 ~ "Timeout",
+              . == 12 ~ "Jump Ball",
+              . == 13 ~ "Ejection",
+              . == 14 ~ "Start Period",
+              . == 15 ~ "End Period",
+              . == 16 ~ "Clock Sync",
+              . == 17 ~ "Instant Replay",
+              . == 18 ~ "Replay Ruling",
+              . == 19 ~ "Game Over",
+              . == 20 ~ "Stoppage",
+              . == 21 ~ "Dribble",
+              . == 22 ~ "Pass",
+              . == 23 ~ "Possession",
+              . == 24 ~ "Shot Block",
+              . == 25 ~ "Assist",
+              TRUE ~ ""
+            )
+            
+            ))
+
+
+epv_curve_52 %>% 
+  gather("player", "event", c(a1_event, a2_event, a3_event, a4_event, a5_event,
+                              h1_event, h2_event, h3_event, h4_event, h5_event)) %>% 
+  mutate(event = if_else(is.na(event), "", event)) %>% 
+  filter(event != "Dribble",
+         event != "Possession") %>% 
+  ggplot(aes(x = 720 - game_clock, y = epv.smooth, label = event)) +
+  geom_path() +
+  geom_label_repel(arrow = arrow(length = unit(0.035, "npc"), type = "open", ends = "first"),
+                   force = 1)
+
+```
+
+
+### Poss ID 97
+
+2nd Quarter Starts at 3:37
+```{r}
+e.dat_97 <- e.dat %>% 
+  filter(possID == 97)
+
+
+# Replace _ent with jersey numbers
+a1_ent_jersey <- e.dat_97 %>% 
+  pull(a1_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+a2_ent_jersey <- e.dat_97 %>% 
+  pull(a2_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+a3_ent_jersey <- e.dat_97 %>% 
+  pull(a3_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+a4_ent_jersey <- e.dat_97 %>% 
+  pull(a4_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+a5_ent_jersey <- e.dat_97 %>% 
+  pull(a5_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h1_ent_jersey <- e.dat_97 %>% 
+  pull(h1_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h2_ent_jersey <- e.dat_97 %>% 
+  pull(h2_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h3_ent_jersey <- e.dat_97 %>% 
+  pull(h3_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h4_ent_jersey <- e.dat_97 %>% 
+  pull(h4_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h5_ent_jersey <- e.dat_97 %>% 
+  pull(h5_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+# Mutate jersey number columns
+e.dat_97 <- e.dat_97 %>% 
+  mutate(a1_ent_jersey = a1_ent_jersey,
+         a2_ent_jersey = a2_ent_jersey,
+         a3_ent_jersey = a3_ent_jersey,
+         a4_ent_jersey = a4_ent_jersey,
+         a5_ent_jersey = a5_ent_jersey,
+         h1_ent_jersey = h1_ent_jersey,
+         h2_ent_jersey = h2_ent_jersey,
+         h3_ent_jersey = h3_ent_jersey,
+         h4_ent_jersey = h4_ent_jersey,
+         h5_ent_jersey = h5_ent_jersey)
+
+
+e.dat_97 <- e.dat_97 %>% 
+  mutate(quarter_processed = case_when(
+    quarter == 1 ~ "1ST",
+    quarter == 2 ~ "2ND",
+    quarter == 3 ~ "3RD",
+    quarter == 4 ~ "4TH",
+    TRUE ~ "NA"
+  )) %>% 
+  mutate(game_clock_minutes = game_clock %/% 60) %>% 
+  mutate(game_clock_seconds = game_clock %% 60)
+
+
+possid_97_quarter <- e.dat_97 %>% 
+  pull(quarter_processed) %>% 
+  first()
+
+
+
+
+
+# Save animation as object
+anim_97 <- fullcourt() +
+  # Home Players + Jersey Numbers
+  geom_point(data = e.dat_97, aes(x = h1_x, y = h1_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = e.dat_97, aes(x = h1_x, y = h1_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_97, aes(x = h2_x, y = h2_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = e.dat_97, aes(x = h2_x, y = h2_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_97, aes(x = h3_x, y = h3_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = e.dat_97, aes(x = h3_x, y = h3_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_97, aes(x = h4_x, y = h4_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = e.dat_97, aes(x = h4_x, y = h4_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_97, aes(x = h5_x, y = h5_y, group = possID), size = 6, color = "lightskyblue1") + 
+  geom_text(data = e.dat_97, aes(x = h5_x, y = h5_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  # Away Players
+  geom_point(data = e.dat_97, aes(x = a1_x, y = a1_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = e.dat_97, aes(x = a1_x, y = a1_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_97, aes(x = a2_x, y = a2_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = e.dat_97, aes(x = a2_x, y = a2_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_97, aes(x = a3_x, y = a3_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = e.dat_97, aes(x = a3_x, y = a3_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_97, aes(x = a4_x, y = a4_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = e.dat_97, aes(x = a4_x, y = a4_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_97, aes(x = a5_x, y = a5_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = e.dat_97, aes(x = a5_x, y = a5_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_97, aes(x = x, y = y, group = possID), size = 3, color = "gold") +
+  transition_time(time = -game_clock) +
+  ggtitle(paste0(possid_97_quarter, " ",  "{-frame_time %/% 60}", ":", "{round(-frame_time %% 60, 0)}")) +
+  theme(plot.title = element_text(hjust = 0.5))
+
+
+
+
+
+
+epv_curve_97 <-  e.dat_97 %>%  
+  mutate_at(vars(contains("event")), 
+            funs(case_when(
+              . == 1 ~ "Free Throw Made",
+              . == 2 ~ "Free Throw Missed",
+              . == 3 ~ "Shot Made",
+              . == 4 ~ "Shot Missed",
+              . == 5 ~ "Offensive Rebound",
+              . == 6 ~ "Defensive Rebound",
+              . == 7 ~ "Turnover",
+              . == 8 ~ "Foul",
+              . == 9 ~ "Violation",
+              . == 10 ~ "Substitution",
+              . == 11 ~ "Timeout",
+              . == 12 ~ "Jump Ball",
+              . == 13 ~ "Ejection",
+              . == 14 ~ "Start Period",
+              . == 15 ~ "End Period",
+              . == 16 ~ "Clock Sync",
+              . == 17 ~ "Instant Replay",
+              . == 18 ~ "Replay Ruling",
+              . == 19 ~ "Game Over",
+              . == 20 ~ "Stoppage",
+              . == 21 ~ "Dribble",
+              . == 22 ~ "Pass",
+              . == 23 ~ "Possession",
+              . == 24 ~ "Shot Block",
+              . == 25 ~ "Assist",
+              TRUE ~ ""
+            )
+            
+            ))
+
+
+epv_anim_97 <- epv_curve_97 %>% 
+  ggplot(aes(x = 720 - game_clock, y = epv.smooth)) +
+  geom_path() +
+  scale_x_continuous(labels = NULL) +
+  transition_reveal(720 - game_clock) +
+  labs(x = NULL,
+       y = "EPV",
+       title = "Possession ID 97") +
+   theme(plot.title = element_text(hjust = 0.5))
+  
+
+
+# Save as gif
+pbp_gif <- animate(anim_97, width = 600, height = 240, fps = 7, renderer = av_renderer())
+epv_gif <- animate(epv_anim_97, width = 600, height = 240, fps = 7, renderer = av_renderer())
+
+# pbp_mgif <- image_read(pbp_gif)
+# epv_mgif <- image_read(epv_gif)
+# 
+# pbp_epv_gif <- image_append(c(epv_mgif[1], pbp_mgif[1]), stack = TRUE)
+# for(ii in 2:100){
+#   combined <- image_append(c(epv_mgif[ii], pbp_mgif[ii]), stack = TRUE)
+#   pbp_epv_gif <- c(pbp_epv_gif, combined)
+# }
+# 
+# pbp_epv_gif
+
+# image_write(pbp_epv_gif, "./combined-gifs/anim-97.GIF")
+```
+
+#### Static Plot
+
+```{r}
+e.dat_97 <- e.dat %>% 
+  filter(possID == 97)
+
+
+# Mutate jersey number columns
+e.dat_97 <- e.dat_97 %>% 
+  mutate(quarter_processed = case_when(
+    quarter == 1 ~ "1ST",
+    quarter == 2 ~ "2ND",
+    quarter == 3 ~ "3RD",
+    quarter == 4 ~ "4TH",
+    TRUE ~ "NA"
+  )) %>% 
+  mutate(game_clock_minutes = game_clock %/% 60) %>% 
+  mutate(game_clock_seconds = game_clock %% 60)
+
+epv_curve_97 <-  e.dat_97 %>%  
+  mutate_at(vars(contains("event")), 
+            funs(case_when(
+              . == 1 ~ "Free Throw Made",
+              . == 2 ~ "Free Throw Missed",
+              . == 3 ~ "Shot Made",
+              . == 4 ~ "Shot Missed",
+              . == 5 ~ "Offensive Rebound",
+              . == 6 ~ "Defensive Rebound",
+              . == 7 ~ "Turnover",
+              . == 8 ~ "Foul",
+              . == 9 ~ "Violation",
+              . == 10 ~ "Substitution",
+              . == 11 ~ "Timeout",
+              . == 12 ~ "Jump Ball",
+              . == 13 ~ "Ejection",
+              . == 14 ~ "Start Period",
+              . == 15 ~ "End Period",
+              . == 16 ~ "Clock Sync",
+              . == 17 ~ "Instant Replay",
+              . == 18 ~ "Replay Ruling",
+              . == 19 ~ "Game Over",
+              . == 20 ~ "Stoppage",
+              . == 21 ~ "Dribble",
+              . == 22 ~ "Pass",
+              . == 23 ~ "Possession",
+              . == 24 ~ "Shot Block",
+              . == 25 ~ "Assist",
+              TRUE ~ ""
+            )
+            
+            ))
+
+
+epv_curve_97 %>% 
+  gather("player", "event", c(a1_event, a2_event, a3_event, a4_event, a5_event,
+                              h1_event, h2_event, h3_event, h4_event, h5_event)) %>% 
+  mutate(event = if_else(is.na(event), "", event)) %>% 
+  filter(event != "Dribble") %>% 
+  ggplot(aes(x = 720 - game_clock, y = epv.smooth, label = event)) +
+  geom_path() +
+  geom_label_repel(arrow = arrow(length = unit(0.035, "npc"), type = "open", ends = "first"),
+                   force = 0.9)
+
+```
+
+
+
+### Poss ID 108
+
+2nd Quarter Starting at 1:21
+
+```{r}
+e.dat_108 <- e.dat %>% 
+  filter(possID == 108)
+
+
+# Replace _ent with jersey numbers
+a1_ent_jersey <- e.dat_108 %>% 
+  pull(a1_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+a2_ent_jersey <- e.dat_108 %>% 
+  pull(a2_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+a3_ent_jersey <- e.dat_108 %>% 
+  pull(a3_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+a4_ent_jersey <- e.dat_108 %>% 
+  pull(a4_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+a5_ent_jersey <- e.dat_108 %>% 
+  pull(a5_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h1_ent_jersey <- e.dat_108 %>% 
+  pull(h1_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h2_ent_jersey <- e.dat_108 %>% 
+  pull(h2_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h3_ent_jersey <- e.dat_108 %>% 
+  pull(h3_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h4_ent_jersey <- e.dat_108 %>% 
+  pull(h4_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h5_ent_jersey <- e.dat_108 %>% 
+  pull(h5_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+# Mutate jersey number columns
+e.dat_108 <- e.dat_108 %>% 
+  mutate(a1_ent_jersey = a1_ent_jersey,
+         a2_ent_jersey = a2_ent_jersey,
+         a3_ent_jersey = a3_ent_jersey,
+         a4_ent_jersey = a4_ent_jersey,
+         a5_ent_jersey = a5_ent_jersey,
+         h1_ent_jersey = h1_ent_jersey,
+         h2_ent_jersey = h2_ent_jersey,
+         h3_ent_jersey = h3_ent_jersey,
+         h4_ent_jersey = h4_ent_jersey,
+         h5_ent_jersey = h5_ent_jersey)
+
+
+e.dat_108 <- e.dat_108 %>% 
+  mutate(quarter_processed = case_when(
+    quarter == 1 ~ "1ST",
+    quarter == 2 ~ "2ND",
+    quarter == 3 ~ "3RD",
+    quarter == 4 ~ "4TH",
+    TRUE ~ "NA"
+  )) %>% 
+  mutate(game_clock_minutes = game_clock %/% 60) %>% 
+  mutate(game_clock_seconds = game_clock %% 60)
+
+
+possid_108_quarter <- e.dat_108 %>% 
+  pull(quarter_processed) %>% 
+  first()
+
+
+
+
+
+# Save animation as object
+anim_108 <- fullcourt() +
+  # Home Players + Jersey Numbers
+  geom_point(data = e.dat_108, aes(x = h1_x, y = h1_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = e.dat_108, aes(x = h1_x, y = h1_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_108, aes(x = h2_x, y = h2_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = e.dat_108, aes(x = h2_x, y = h2_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_108, aes(x = h3_x, y = h3_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = e.dat_108, aes(x = h3_x, y = h3_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_108, aes(x = h4_x, y = h4_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = e.dat_108, aes(x = h4_x, y = h4_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_108, aes(x = h5_x, y = h5_y, group = possID), size = 6, color = "lightskyblue1") + 
+  geom_text(data = e.dat_108, aes(x = h5_x, y = h5_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  # Away Players
+  geom_point(data = e.dat_108, aes(x = a1_x, y = a1_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = e.dat_108, aes(x = a1_x, y = a1_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_108, aes(x = a2_x, y = a2_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = e.dat_108, aes(x = a2_x, y = a2_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_108, aes(x = a3_x, y = a3_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = e.dat_108, aes(x = a3_x, y = a3_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_108, aes(x = a4_x, y = a4_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = e.dat_108, aes(x = a4_x, y = a4_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_108, aes(x = a5_x, y = a5_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = e.dat_108, aes(x = a5_x, y = a5_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_108, aes(x = x, y = y, group = possID), size = 3, color = "gold") +
+  transition_time(time = -game_clock) +
+  ggtitle(paste0(possid_108_quarter, " ",  "{-frame_time %/% 60}", ":", "{round(-frame_time %% 60, 0)}")) +
+  theme(plot.title = element_text(hjust = 0.5))
+
+
+
+
+
+
+epv_curve_108 <-  e.dat_108 %>%  
+  mutate_at(vars(contains("event")), 
+            funs(case_when(
+              . == 1 ~ "Free Throw Made",
+              . == 2 ~ "Free Throw Missed",
+              . == 3 ~ "Shot Made",
+              . == 4 ~ "Shot Missed",
+              . == 5 ~ "Offensive Rebound",
+              . == 6 ~ "Defensive Rebound",
+              . == 7 ~ "Turnover",
+              . == 8 ~ "Foul",
+              . == 9 ~ "Violation",
+              . == 10 ~ "Substitution",
+              . == 11 ~ "Timeout",
+              . == 12 ~ "Jump Ball",
+              . == 13 ~ "Ejection",
+              . == 14 ~ "Start Period",
+              . == 15 ~ "End Period",
+              . == 16 ~ "Clock Sync",
+              . == 17 ~ "Instant Replay",
+              . == 18 ~ "Replay Ruling",
+              . == 19 ~ "Game Over",
+              . == 20 ~ "Stoppage",
+              . == 21 ~ "Dribble",
+              . == 22 ~ "Pass",
+              . == 23 ~ "Possession",
+              . == 24 ~ "Shot Block",
+              . == 25 ~ "Assist",
+              TRUE ~ ""
+            )
+            
+            ))
+
+
+epv_anim_108 <- epv_curve_108 %>% 
+  ggplot(aes(x = 720 - game_clock, y = epv.smooth)) +
+  geom_path() +
+  scale_x_continuous(labels = NULL) +
+  transition_reveal(720 - game_clock) +
+  labs(x = NULL,
+       y = "EPV",
+       title = "Possession ID 108") +
+   theme(plot.title = element_text(hjust = 0.5))
+  
+
+
+# Save as gif
+pbp_gif <- animate(anim_108, width = 600, height = 240, fps = 7, renderer = av_renderer())
+epv_gif <- animate(epv_anim_108, width = 600, height = 240, fps = 7, renderer = av_renderer())
+
+# pbp_mgif <- image_read(pbp_gif)
+# epv_mgif <- image_read(epv_gif)
+# 
+# pbp_epv_gif <- image_append(c(epv_mgif[1], pbp_mgif[1]), stack = TRUE)
+# for(ii in 2:100){
+#   combined <- image_append(c(epv_mgif[ii], pbp_mgif[ii]), stack = TRUE)
+#   pbp_epv_gif <- c(pbp_epv_gif, combined)
+# }
+# 
+# pbp_epv_gif
+# 
+# image_write(pbp_epv_gif, "./combined-gifs/anim-108.GIF")
+```
+
+#### Static Plot
+
+```{r}
+e.dat_108 <- e.dat %>% 
+  filter(possID == 108)
+
+
+# Mutate jersey number columns
+e.dat_108 <- e.dat_108 %>% 
+  mutate(quarter_processed = case_when(
+    quarter == 1 ~ "1ST",
+    quarter == 2 ~ "2ND",
+    quarter == 3 ~ "3RD",
+    quarter == 4 ~ "4TH",
+    TRUE ~ "NA"
+  )) %>% 
+  mutate(game_clock_minutes = game_clock %/% 60) %>% 
+  mutate(game_clock_seconds = game_clock %% 60)
+
+epv_curve_108 <-  e.dat_108 %>%  
+  mutate_at(vars(contains("event")), 
+            funs(case_when(
+              . == 1 ~ "Free Throw Made",
+              . == 2 ~ "Free Throw Missed",
+              . == 3 ~ "Shot Made",
+              . == 4 ~ "Shot Missed",
+              . == 5 ~ "Offensive Rebound",
+              . == 6 ~ "Defensive Rebound",
+              . == 7 ~ "Turnover",
+              . == 8 ~ "Foul",
+              . == 9 ~ "Violation",
+              . == 10 ~ "Substitution",
+              . == 11 ~ "Timeout",
+              . == 12 ~ "Jump Ball",
+              . == 13 ~ "Ejection",
+              . == 14 ~ "Start Period",
+              . == 15 ~ "End Period",
+              . == 16 ~ "Clock Sync",
+              . == 17 ~ "Instant Replay",
+              . == 18 ~ "Replay Ruling",
+              . == 19 ~ "Game Over",
+              . == 20 ~ "Stoppage",
+              . == 21 ~ "Dribble",
+              . == 22 ~ "Pass",
+              . == 23 ~ "Possession",
+              . == 24 ~ "Shot Block",
+              . == 25 ~ "Assist",
+              TRUE ~ ""
+            )
+            
+            ))
+
+
+epv_curve_108 %>% 
+  gather("player", "event", c(a1_event, a2_event, a3_event, a4_event, a5_event,
+                              h1_event, h2_event, h3_event, h4_event, h5_event)) %>% 
+  mutate(event = if_else(is.na(event), "", event)) %>% 
+  filter(event != "Dribble",
+         event != "Possession") %>% 
+  ggplot(aes(x = 720 - game_clock, y = epv.smooth, label = event)) +
+  geom_path() +
+  geom_label_repel(arrow = arrow(length = unit(0.035, "npc"), type = "open", ends = "first"),
+                   force = 0.9)
+
+```
+
+
+### Poss ID 166
+
+3rd Quarter 3:03
+
+
+```{r}
+e.dat_166 <- e.dat %>% 
+  filter(possID == 166)
+
+
+# Replace _ent with jersey numbers
+a1_ent_jersey <- e.dat_166 %>% 
+  pull(a1_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+a2_ent_jersey <- e.dat_166 %>% 
+  pull(a2_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+a3_ent_jersey <- e.dat_166 %>% 
+  pull(a3_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+a4_ent_jersey <- e.dat_166 %>% 
+  pull(a4_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+a5_ent_jersey <- e.dat_166 %>% 
+  pull(a5_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h1_ent_jersey <- e.dat_166 %>% 
+  pull(h1_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h2_ent_jersey <- e.dat_166 %>% 
+  pull(h2_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h3_ent_jersey <- e.dat_166 %>% 
+  pull(h3_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h4_ent_jersey <- e.dat_166 %>% 
+  pull(h4_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h5_ent_jersey <- e.dat_166 %>% 
+  pull(h5_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+# Mutate jersey number columns
+e.dat_166 <- e.dat_166 %>% 
+  mutate(a1_ent_jersey = a1_ent_jersey,
+         a2_ent_jersey = a2_ent_jersey,
+         a3_ent_jersey = a3_ent_jersey,
+         a4_ent_jersey = a4_ent_jersey,
+         a5_ent_jersey = a5_ent_jersey,
+         h1_ent_jersey = h1_ent_jersey,
+         h2_ent_jersey = h2_ent_jersey,
+         h3_ent_jersey = h3_ent_jersey,
+         h4_ent_jersey = h4_ent_jersey,
+         h5_ent_jersey = h5_ent_jersey)
+
+
+e.dat_166 <- e.dat_166 %>% 
+  mutate(quarter_processed = case_when(
+    quarter == 1 ~ "1ST",
+    quarter == 2 ~ "2ND",
+    quarter == 3 ~ "3RD",
+    quarter == 4 ~ "4TH",
+    TRUE ~ "NA"
+  )) %>% 
+  mutate(game_clock_minutes = game_clock %/% 60) %>% 
+  mutate(game_clock_seconds = game_clock %% 60)
+
+
+possid_166_quarter <- e.dat_166 %>% 
+  pull(quarter_processed) %>% 
+  first()
+
+
+
+
+
+# Save animation as object
+anim_166 <- fullcourt() +
+  # Home Players + Jersey Numbers
+  geom_point(data = e.dat_166, aes(x = h1_x, y = h1_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = e.dat_166, aes(x = h1_x, y = h1_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_166, aes(x = h2_x, y = h2_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = e.dat_166, aes(x = h2_x, y = h2_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_166, aes(x = h3_x, y = h3_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = e.dat_166, aes(x = h3_x, y = h3_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_166, aes(x = h4_x, y = h4_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = e.dat_166, aes(x = h4_x, y = h4_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_166, aes(x = h5_x, y = h5_y, group = possID), size = 6, color = "lightskyblue1") + 
+  geom_text(data = e.dat_166, aes(x = h5_x, y = h5_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  # Away Players
+  geom_point(data = e.dat_166, aes(x = a1_x, y = a1_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = e.dat_166, aes(x = a1_x, y = a1_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_166, aes(x = a2_x, y = a2_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = e.dat_166, aes(x = a2_x, y = a2_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_166, aes(x = a3_x, y = a3_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = e.dat_166, aes(x = a3_x, y = a3_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_166, aes(x = a4_x, y = a4_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = e.dat_166, aes(x = a4_x, y = a4_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_166, aes(x = a5_x, y = a5_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = e.dat_166, aes(x = a5_x, y = a5_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_166, aes(x = x, y = y, group = possID), size = 3, color = "gold") +
+  transition_time(time = -game_clock) +
+  ggtitle(paste0(possid_166_quarter, " ",  "{-frame_time %/% 60}", ":", "{round(-frame_time %% 60, 0)}")) +
+  theme(plot.title = element_text(hjust = 0.5))
+
+
+
+
+
+
+epv_curve_166 <-  e.dat_166 %>%  
+  mutate_at(vars(contains("event")), 
+            funs(case_when(
+              . == 1 ~ "Free Throw Made",
+              . == 2 ~ "Free Throw Missed",
+              . == 3 ~ "Shot Made",
+              . == 4 ~ "Shot Missed",
+              . == 5 ~ "Offensive Rebound",
+              . == 6 ~ "Defensive Rebound",
+              . == 7 ~ "Turnover",
+              . == 8 ~ "Foul",
+              . == 9 ~ "Violation",
+              . == 10 ~ "Substitution",
+              . == 11 ~ "Timeout",
+              . == 12 ~ "Jump Ball",
+              . == 13 ~ "Ejection",
+              . == 14 ~ "Start Period",
+              . == 15 ~ "End Period",
+              . == 16 ~ "Clock Sync",
+              . == 17 ~ "Instant Replay",
+              . == 18 ~ "Replay Ruling",
+              . == 19 ~ "Game Over",
+              . == 20 ~ "Stoppage",
+              . == 21 ~ "Dribble",
+              . == 22 ~ "Pass",
+              . == 23 ~ "Possession",
+              . == 24 ~ "Shot Block",
+              . == 25 ~ "Assist",
+              TRUE ~ ""
+            )
+            
+            ))
+
+
+epv_anim_166 <- epv_curve_166 %>% 
+  ggplot(aes(x = 720 - game_clock, y = epv.smooth)) +
+  geom_path() +
+  scale_x_continuous(labels = NULL) +
+  transition_reveal(720 - game_clock) +
+  labs(x = NULL,
+       y = "EPV",
+       title = "Possession ID 166") +
+   theme(plot.title = element_text(hjust = 0.5))
+  
+
+
+# Save as gif
+pbp_gif <- animate(anim_166, width = 600, height = 240, fps = 7, renderer = av_renderer())
+epv_gif <- animate(epv_anim_166, width = 600, height = 240, fps = 7, renderer = av_renderer())
+
+# pbp_mgif <- image_read(pbp_gif)
+# epv_mgif <- image_read(epv_gif)
+# 
+# pbp_epv_gif <- image_append(c(epv_mgif[1], pbp_mgif[1]), stack = TRUE)
+# for(ii in 2:100){
+#   combined <- image_append(c(epv_mgif[ii], pbp_mgif[ii]), stack = TRUE)
+#   pbp_epv_gif <- c(pbp_epv_gif, combined)
+# }
+# 
+# pbp_epv_gif
+#  
+# image_write(pbp_epv_gif, "./combined-gifs/anim-166.GIF")
+```
+
+
+
+#### Static Plot
+
+```{r}
+e.dat_166 <- e.dat %>% 
+  filter(possID == 166)
+
+
+# Mutate jersey number columns
+e.dat_166 <- e.dat_166 %>% 
+  mutate(quarter_processed = case_when(
+    quarter == 1 ~ "1ST",
+    quarter == 2 ~ "2ND",
+    quarter == 3 ~ "3RD",
+    quarter == 4 ~ "4TH",
+    TRUE ~ "NA"
+  )) %>% 
+  mutate(game_clock_minutes = game_clock %/% 60) %>% 
+  mutate(game_clock_seconds = game_clock %% 60)
+
+epv_curve_166 <-  e.dat_166 %>%  
+  mutate_at(vars(contains("event")), 
+            funs(case_when(
+              . == 1 ~ "Free Throw Made",
+              . == 2 ~ "Free Throw Missed",
+              . == 3 ~ "Shot Made",
+              . == 4 ~ "Shot Missed",
+              . == 5 ~ "Offensive Rebound",
+              . == 6 ~ "Defensive Rebound",
+              . == 7 ~ "Turnover",
+              . == 8 ~ "Foul",
+              . == 9 ~ "Violation",
+              . == 10 ~ "Substitution",
+              . == 11 ~ "Timeout",
+              . == 12 ~ "Jump Ball",
+              . == 13 ~ "Ejection",
+              . == 14 ~ "Start Period",
+              . == 15 ~ "End Period",
+              . == 16 ~ "Clock Sync",
+              . == 17 ~ "Instant Replay",
+              . == 18 ~ "Replay Ruling",
+              . == 19 ~ "Game Over",
+              . == 20 ~ "Stoppage",
+              . == 21 ~ "Dribble",
+              . == 22 ~ "Pass",
+              . == 23 ~ "Possession",
+              . == 24 ~ "Shot Block",
+              . == 25 ~ "Assist",
+              TRUE ~ ""
+            )
+            
+            ))
+
+
+epv_curve_166 %>% 
+  gather("player", "event", c(a1_event, a2_event, a3_event, a4_event, a5_event,
+                              h1_event, h2_event, h3_event, h4_event, h5_event)) %>% 
+  mutate(event = if_else(is.na(event), "", event)) %>% 
+  filter(event != "Dribble") %>% 
+  ggplot(aes(x = 720 - game_clock, y = epv.smooth, label = event)) +
+  geom_path() +
+  geom_label_repel(arrow = arrow(length = unit(0.035, "npc"), type = "open", ends = "first"),
+                   force = 0.9)
+
+```
+
+### Poss ID 222
+
+4th Quarter 2:50
+```{r}
+e.dat_222 <- e.dat %>% 
+  filter(possID == 222)
+
+
+# Replace _ent with jersey numbers
+a1_ent_jersey <- e.dat_222 %>% 
+  pull(a1_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+a2_ent_jersey <- e.dat_222 %>% 
+  pull(a2_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+a3_ent_jersey <- e.dat_222 %>% 
+  pull(a3_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+a4_ent_jersey <- e.dat_222 %>% 
+  pull(a4_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+a5_ent_jersey <- e.dat_222 %>% 
+  pull(a5_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h1_ent_jersey <- e.dat_222 %>% 
+  pull(h1_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h2_ent_jersey <- e.dat_222 %>% 
+  pull(h2_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h3_ent_jersey <- e.dat_222 %>% 
+  pull(h3_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h4_ent_jersey <- e.dat_222 %>% 
+  pull(h4_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+h5_ent_jersey <- e.dat_222 %>% 
+  pull(h5_ent) %>%
+  first() %>% 
+  grab_jersey()
+
+# Mutate jersey number columns
+e.dat_222 <- e.dat_222 %>% 
+  mutate(a1_ent_jersey = a1_ent_jersey,
+         a2_ent_jersey = a2_ent_jersey,
+         a3_ent_jersey = a3_ent_jersey,
+         a4_ent_jersey = a4_ent_jersey,
+         a5_ent_jersey = a5_ent_jersey,
+         h1_ent_jersey = h1_ent_jersey,
+         h2_ent_jersey = h2_ent_jersey,
+         h3_ent_jersey = h3_ent_jersey,
+         h4_ent_jersey = h4_ent_jersey,
+         h5_ent_jersey = h5_ent_jersey)
+
+
+e.dat_222 <- e.dat_222 %>% 
+  mutate(quarter_processed = case_when(
+    quarter == 1 ~ "1ST",
+    quarter == 2 ~ "2ND",
+    quarter == 3 ~ "3RD",
+    quarter == 4 ~ "4TH",
+    TRUE ~ "NA"
+  )) %>% 
+  mutate(game_clock_minutes = game_clock %/% 60) %>% 
+  mutate(game_clock_seconds = game_clock %% 60)
+
+
+possid_222_quarter <- e.dat_222 %>% 
+  pull(quarter_processed) %>% 
+  first()
+
+# Adjust position of h3
+e.dat_222 <- e.dat_222 %>% 
+  mutate(row_number = row_number()) %>% 
+  mutate(h3_x = if_else(between(row_number, 234, 259), 89.303, h3_x),
+         h3_y = if_else(between(row_number, 234, 259), 48.054, h3_y)) %>% 
+  select(-row_number)
+
+
+
+# Save animation as object
+anim_222 <- fullcourt() +
+  # Home Players + Jersey Numbers
+  geom_point(data = e.dat_222, aes(x = h1_x, y = h1_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = e.dat_222, aes(x = h1_x, y = h1_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_222, aes(x = h2_x, y = h2_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = e.dat_222, aes(x = h2_x, y = h2_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_222, aes(x = h3_x, y = h3_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = e.dat_222, aes(x = h3_x, y = h3_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_222, aes(x = h4_x, y = h4_y, group = possID), size = 6, color = "lightskyblue1") +  
+  geom_text(data = e.dat_222, aes(x = h4_x, y = h4_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_222, aes(x = h5_x, y = h5_y, group = possID), size = 6, color = "lightskyblue1") + 
+  geom_text(data = e.dat_222, aes(x = h5_x, y = h5_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  # Away Players
+  geom_point(data = e.dat_222, aes(x = a1_x, y = a1_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = e.dat_222, aes(x = a1_x, y = a1_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_222, aes(x = a2_x, y = a2_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = e.dat_222, aes(x = a2_x, y = a2_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_222, aes(x = a3_x, y = a3_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = e.dat_222, aes(x = a3_x, y = a3_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_222, aes(x = a4_x, y = a4_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = e.dat_222, aes(x = a4_x, y = a4_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_222, aes(x = a5_x, y = a5_y, group = possID), size = 6, color = "salmon1") +  
+  geom_text(data = e.dat_222, aes(x = a5_x, y = a5_y, group = possID), color = 'black', alpha = 0.3) + 
+  
+  geom_point(data = e.dat_222, aes(x = x, y = y, group = possID), size = 3, color = "gold") +
+  transition_time(time = -game_clock) +
+  ggtitle(paste0(possid_222_quarter, " ",  "{-frame_time %/% 60}", ":", "{round(-frame_time %% 60, 0)}")) +
+  theme(plot.title = element_text(hjust = 0.5))
+
+
+
+
+
+
+epv_curve_222 <-  e.dat_222 %>%  
+  mutate_at(vars(contains("event")), 
+            funs(case_when(
+              . == 1 ~ "Free Throw Made",
+              . == 2 ~ "Free Throw Missed",
+              . == 3 ~ "Shot Made",
+              . == 4 ~ "Shot Missed",
+              . == 5 ~ "Offensive Rebound",
+              . == 6 ~ "Defensive Rebound",
+              . == 7 ~ "Turnover",
+              . == 8 ~ "Foul",
+              . == 9 ~ "Violation",
+              . == 10 ~ "Substitution",
+              . == 11 ~ "Timeout",
+              . == 12 ~ "Jump Ball",
+              . == 13 ~ "Ejection",
+              . == 14 ~ "Start Period",
+              . == 15 ~ "End Period",
+              . == 16 ~ "Clock Sync",
+              . == 17 ~ "Instant Replay",
+              . == 18 ~ "Replay Ruling",
+              . == 19 ~ "Game Over",
+              . == 20 ~ "Stoppage",
+              . == 21 ~ "Dribble",
+              . == 22 ~ "Pass",
+              . == 23 ~ "Possession",
+              . == 24 ~ "Shot Block",
+              . == 25 ~ "Assist",
+              TRUE ~ ""
+            )
+            
+            ))
+
+
+epv_anim_222 <- epv_curve_222 %>% 
+  ggplot(aes(x = 720 - game_clock, y = epv.smooth)) +
+  geom_path() +
+  scale_x_continuous(labels = NULL) +
+  transition_reveal(720 - game_clock) +
+  labs(x = NULL,
+       y = "EPV",
+       title = "Possession ID 222") +
+   theme(plot.title = element_text(hjust = 0.5))
+  
+
+
+# Save as gif
+pbp_gif <- animate(anim_222, width = 600, height = 240, fps = 7, renderer = av_renderer())
+epv_gif <- animate(epv_anim_222, width = 600, height = 240, fps = 7, renderer = av_renderer())
+
+# pbp_mgif <- image_read(pbp_gif)
+# epv_mgif <- image_read(epv_gif)
+# 
+# pbp_epv_gif <- image_append(c(epv_mgif[1], pbp_mgif[1]), stack = TRUE)
+# for(ii in 2:100){
+#   combined <- image_append(c(epv_mgif[ii], pbp_mgif[ii]), stack = TRUE)
+#   pbp_epv_gif <- c(pbp_epv_gif, combined)
+# }
+# 
+# pbp_epv_gif
+#  
+# image_write(pbp_epv_gif, "./combined-gifs/anim-222.GIF")
+```
+
+#### Static Plot
+
+```{r}
+e.dat_222 <- e.dat %>% 
+  filter(possID == 222)
+
+
+# Mutate jersey number columns
+e.dat_222 <- e.dat_222 %>% 
+  mutate(quarter_processed = case_when(
+    quarter == 1 ~ "1ST",
+    quarter == 2 ~ "2ND",
+    quarter == 3 ~ "3RD",
+    quarter == 4 ~ "4TH",
+    TRUE ~ "NA"
+  )) %>% 
+  mutate(game_clock_minutes = game_clock %/% 60) %>% 
+  mutate(game_clock_seconds = game_clock %% 60)
+
+epv_curve_222 <-  e.dat_222 %>%  
+  mutate_at(vars(contains("event")), 
+            funs(case_when(
+              . == 1 ~ "Free Throw Made",
+              . == 2 ~ "Free Throw Missed",
+              . == 3 ~ "Shot Made",
+              . == 4 ~ "Shot Missed",
+              . == 5 ~ "Offensive Rebound",
+              . == 6 ~ "Defensive Rebound",
+              . == 7 ~ "Turnover",
+              . == 8 ~ "Foul",
+              . == 9 ~ "Violation",
+              . == 10 ~ "Substitution",
+              . == 11 ~ "Timeout",
+              . == 12 ~ "Jump Ball",
+              . == 13 ~ "Ejection",
+              . == 14 ~ "Start Period",
+              . == 15 ~ "End Period",
+              . == 16 ~ "Clock Sync",
+              . == 17 ~ "Instant Replay",
+              . == 18 ~ "Replay Ruling",
+              . == 19 ~ "Game Over",
+              . == 20 ~ "Stoppage",
+              . == 21 ~ "Dribble",
+              . == 22 ~ "Pass",
+              . == 23 ~ "Possession",
+              . == 24 ~ "Shot Block",
+              . == 25 ~ "Assist",
+              TRUE ~ ""
+            )
+            
+            ))
+
+
+epv_curve_222 %>% 
+  gather("player", "event", c(a1_event, a2_event, a3_event, a4_event, a5_event,
+                              h1_event, h2_event, h3_event, h4_event, h5_event)) %>% 
+  mutate(event = if_else(is.na(event), "", event)) %>% 
+  filter(event != "Dribble") %>% 
+  ggplot(aes(x = 720 - game_clock, y = epv.smooth, label = event)) +
+  geom_path() +
+  geom_label_repel(arrow = arrow(length = unit(0.035, "npc"), type = "open", ends = "first"),
+                   force = 0.9)
+
+```
+
+
+
+### Poss ID 223
+
+-4th Quarter 2:23
+- Lebron James is Jordenesque
+
+
+```{r}
+e.dat %>% 
+  filter(quarter == 4) %>% 
+  mutate(game_clock_min = game_clock %/% 60,
+         game_clock_sec = game_clock %% 60) %>% 
+  select(quarter, possID, game_clock_min, game_clock_sec) %>% 
+  View()
+```
+
+
+#### Static Plot
+
+```{r}
+e.dat_223 <- e.dat %>% 
+  filter(possID == 223)
+
+
+# Mutate jersey number columns
+e.dat_223 <- e.dat_223 %>% 
+  mutate(quarter_processed = case_when(
+    quarter == 1 ~ "1ST",
+    quarter == 2 ~ "2ND",
+    quarter == 3 ~ "3RD",
+    quarter == 4 ~ "4TH",
+    TRUE ~ "NA"
+  )) %>% 
+  mutate(game_clock_minutes = game_clock %/% 60) %>% 
+  mutate(game_clock_seconds = game_clock %% 60)
+
+epv_curve_223 <-  e.dat_223 %>%  
+  mutate_at(vars(contains("event")), 
+            funs(case_when(
+              . == 1 ~ "Free Throw Made",
+              . == 2 ~ "Free Throw Missed",
+              . == 3 ~ "Shot Made",
+              . == 4 ~ "Shot Missed",
+              . == 5 ~ "Offensive Rebound",
+              . == 6 ~ "Defensive Rebound",
+              . == 7 ~ "Turnover",
+              . == 8 ~ "Foul",
+              . == 9 ~ "Violation",
+              . == 10 ~ "Substitution",
+              . == 11 ~ "Timeout",
+              . == 12 ~ "Jump Ball",
+              . == 13 ~ "Ejection",
+              . == 14 ~ "Start Period",
+              . == 15 ~ "End Period",
+              . == 16 ~ "Clock Sync",
+              . == 17 ~ "Instant Replay",
+              . == 18 ~ "Replay Ruling",
+              . == 19 ~ "Game Over",
+              . == 20 ~ "Stoppage",
+              . == 21 ~ "Dribble",
+              . == 22 ~ "Pass",
+              . == 23 ~ "Possession",
+              . == 24 ~ "Shot Block",
+              . == 25 ~ "Assist",
+              TRUE ~ ""
+            )
+            
+            ))
+
+
+epv_curve_223 %>% 
+  gather("player", "event", c(a1_event, a2_event, a3_event, a4_event, a5_event,
+                              h1_event, h2_event, h3_event, h4_event, h5_event)) %>% 
+  mutate(event = if_else(is.na(event), "", event)) %>% 
+  filter(event != "Dribble",
+         event != "Possession") %>% 
+  ggplot(aes(x = 720 - game_clock, y = epv.smooth, label = event)) +
+  geom_path() +
+  geom_label_repel(arrow = arrow(length = unit(0.035, "npc"), type = "open", ends = "first"),
+                   force = 0.3)
+
+```
+
+
+
+# Lebron James Plays
+
+2nd Quarter: 1:50 POSS 106
+4th Quarter 8:43 POSS 199
+
+### Poss 90
+
+```{r}
+e.dat_90 <- e.dat %>% 
+  filter(possID == 90)
+
+
+# Mutate jersey number columns
+e.dat_90 <- e.dat_90 %>% 
+  mutate(quarter_processed = case_when(
+    quarter == 1 ~ "1ST",
+    quarter == 2 ~ "2ND",
+    quarter == 3 ~ "3RD",
+    quarter == 4 ~ "4TH",
+    TRUE ~ "NA"
+  )) %>% 
+  mutate(game_clock_minutes = game_clock %/% 60) %>% 
+  mutate(game_clock_seconds = game_clock %% 60)
+
+
+possid_90_quarter <- e.dat_90 %>% 
+  pull(quarter_processed) %>% 
+  first()
+
+
+# Save animation as object
+anim_90 <- fullcourt() +
+  # Home Players + Jersey Numbers
+  geom_point(data = e.dat_90, aes(x = h1_x, y = h1_y, group = possID), size = 6, color = "lightskyblue1") + 
+  
+  geom_point(data = e.dat_90, aes(x = h2_x, y = h2_y, group = possID), size = 6, color = "lightskyblue1") +  
+  
+  geom_point(data = e.dat_90, aes(x = h3_x, y = h3_y, group = possID), size = 6, color = "lightskyblue1") +  
+  
+  
+  geom_point(data = e.dat_90, aes(x = h4_x, y = h4_y, group = possID), size = 6, color = "lightskyblue1") +  
+  
+  geom_point(data = e.dat_90, aes(x = h5_x, y = h5_y, group = possID), size = 6, color = "lightskyblue1") + 
+  
+  # Away Players
+  geom_point(data = e.dat_90, aes(x = a1_x, y = a1_y, group = possID), size = 6, color = "salmon1") +  
+  
+  geom_point(data = e.dat_90, aes(x = a2_x, y = a2_y, group = possID), size = 6, color = "salmon1") +  
+  
+  geom_point(data = e.dat_90, aes(x = a3_x, y = a3_y, group = possID), size = 6, color = "salmon1") +  
+  
+  
+  geom_point(data = e.dat_90, aes(x = a4_x, y = a4_y, group = possID), size = 6, color = "salmon1") +  
+  
+  
+  geom_point(data = e.dat_90, aes(x = a5_x, y = a5_y, group = possID), size = 6, color = "salmon1") +  
+  
+  
+  # Ball
+  geom_point(data = e.dat_90, aes(x = x, y = y, group = possID), size = 3, color = "gold") +
+  
+  transition_time(time = -game_clock) +
+  ggtitle(paste0(possid_90_quarter, " ",  "{-frame_time %/% 60}", ":", "{round(-frame_time %% 60, 0)}")) +
+  theme(plot.title = element_text(hjust = 0.5))
+
+
+
+
+
+
+epv_curve_90 <-  e.dat_90 %>%  
+  mutate_at(vars(contains("event")), 
+            funs(case_when(
+              . == 1 ~ "Free Throw Made",
+              . == 2 ~ "Free Throw Missed",
+              . == 3 ~ "Shot Made",
+              . == 4 ~ "Shot Missed",
+              . == 5 ~ "Offensive Rebound",
+              . == 6 ~ "Defensive Rebound",
+              . == 7 ~ "Turnover",
+              . == 8 ~ "Foul",
+              . == 9 ~ "Violation",
+              . == 10 ~ "Substitution",
+              . == 11 ~ "Timeout",
+              . == 12 ~ "Jump Ball",
+              . == 13 ~ "Ejection",
+              . == 14 ~ "Start Period",
+              . == 15 ~ "End Period",
+              . == 16 ~ "Clock Sync",
+              . == 17 ~ "Instant Replay",
+              . == 18 ~ "Replay Ruling",
+              . == 19 ~ "Game Over",
+              . == 20 ~ "Stoppage",
+              . == 21 ~ "Dribble",
+              . == 22 ~ "Pass",
+              . == 23 ~ "Possession",
+              . == 24 ~ "Shot Block",
+              . == 25 ~ "Assist",
+              TRUE ~ ""
+            )
+            
+            ))
+
+
+epv_anim_90 <- epv_curve_90 %>% 
+  ggplot(aes(x = 720 - game_clock, y = epv.smooth)) +
+  geom_path() +
+  scale_x_continuous(labels = NULL) +
+  transition_reveal(720 - game_clock) +
+  labs(x = NULL,
+       y = "EPV",
+       title = paste0("Possession ID ", 90)) +
+  theme(plot.title = element_text(hjust = 0.5))
+
+
+
+# Save as gif
+pbp_gif <- animate(anim_90, width = 600, height = 240, fps = 7)
+epv_gif <- animate(epv_anim_90, width = 600, height = 240, fps = 7)
+
+pbp_mgif <- image_read(pbp_gif)
+epv_mgif <- image_read(epv_gif)
+
+pbp_epv_gif <- image_append(c(epv_mgif[1], pbp_mgif[1]), stack = TRUE)
+
+for(ii in 2:100){
+  combined <- image_append(c(epv_mgif[ii], pbp_mgif[ii]), stack = TRUE)
+  pbp_epv_gif <- c(pbp_epv_gif, combined)
+}
+
+pbp_epv_gif
+
+```
+
+#### Static Plot
+```{r}
+epv_curve_90 %>% 
+  gather("player", "event", c(a1_event, a2_event, a3_event, a4_event, a5_event,
+                              h1_event, h2_event, h3_event, h4_event, h5_event)) %>% 
+  mutate(event = if_else(is.na(event), "", event)) %>% 
+  filter(event != "Dribble") %>% 
+  ggplot(aes(x = 720 - game_clock, y = epv.smooth, label = event)) +
+  geom_path() +
+  geom_label_repel(arrow = arrow(length = unit(0.035, "npc"), type = "open", ends = "first"),
+                   force = 7.3, nudge_y = 0.1, nudge_x = 0.2)
+  # labs(x = "Game Clock",
+  #      y = "EPV",
+  #      title = "\"James throws it off the head of Anderson!!!\"") +
+  # scale_x_continuous(breaks = c(685, 690, 695, 700),
+  #                    labels = c("11:25", "11:30", "11:35", "11:40")) +
+  # theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+
+
+### Poss 106
+
+```{r}
+make_poss_gif_without(106)
+```
+
+#### Static Plot
+```{r}
+e.dat_106 <- e.dat %>% 
+  filter(possID == 106)
+
+
+# Mutate jersey number columns
+e.dat_106 <- e.dat_106 %>% 
+  mutate(quarter_processed = case_when(
+    quarter == 1 ~ "1ST",
+    quarter == 2 ~ "2ND",
+    quarter == 3 ~ "3RD",
+    quarter == 4 ~ "4TH",
+    TRUE ~ "NA"
+  )) %>% 
+  mutate(game_clock_minutes = game_clock %/% 60) %>% 
+  mutate(game_clock_seconds = game_clock %% 60)
+
+
+possid_106_quarter <- e.dat_106 %>% 
+  pull(quarter_processed) %>% 
+  first()
+
+
+
+
+epv_curve_106 <-  e.dat_106 %>%  
+  mutate_at(vars(contains("event")), 
+            funs(case_when(
+              . == 1 ~ "Free Throw Made",
+              . == 2 ~ "Free Throw Missed",
+              . == 3 ~ "Shot Made",
+              . == 4 ~ "Shot Missed",
+              . == 5 ~ "Offensive Rebound",
+              . == 6 ~ "Defensive Rebound",
+              . == 7 ~ "Turnover",
+              . == 8 ~ "Foul",
+              . == 9 ~ "Violation",
+              . == 10 ~ "Substitution",
+              . == 11 ~ "Timeout",
+              . == 12 ~ "Jump Ball",
+              . == 13 ~ "Ejection",
+              . == 14 ~ "Start Period",
+              . == 15 ~ "End Period",
+              . == 16 ~ "Clock Sync",
+              . == 17 ~ "Instant Replay",
+              . == 18 ~ "Replay Ruling",
+              . == 19 ~ "Game Over",
+              . == 20 ~ "Stoppage",
+              . == 21 ~ "Dribble",
+              . == 22 ~ "Pass",
+              . == 23 ~ "Possession",
+              . == 24 ~ "Shot Block",
+              . == 25 ~ "Assist",
+              TRUE ~ ""
+            )
+            
+            ))
+
+
+epv_curve_106 %>% 
+  gather("player", "event", c(a1_event, a2_event, a3_event, a4_event, a5_event,
+                              h1_event, h2_event, h3_event, h4_event, h5_event)) %>% 
+  mutate(event = if_else(is.na(event), "", event)) %>% 
+  filter(event != "Dribble") %>% 
+  ggplot(aes(x = 720 - game_clock, y = epv.smooth, label = event)) +
+  geom_path() +
+  geom_label_repel(arrow = arrow(length = unit(0.035, "npc"), type = "open", ends = "first"),
+                   force = 7.3, nudge_y = 0.13, nudge_x = 0.03)
+
+```
+
+
+
+# Dwayne Wade Plays
+
+
+
+### Poss ID 5
+
+1st Quarter 10:48
+```{r}
+make_poss_gif_without(5)
+```
+
+#### Static Plot
+```{r}
+e.dat_5 <- e.dat %>% 
+  filter(possID == 5)
+
+
+# Mutate jersey number columns
+e.dat_5 <- e.dat_5 %>% 
+  mutate(quarter_processed = case_when(
+    quarter == 1 ~ "1ST",
+    quarter == 2 ~ "2ND",
+    quarter == 3 ~ "3RD",
+    quarter == 4 ~ "4TH",
+    TRUE ~ "NA"
+  )) %>% 
+  mutate(game_clock_minutes = game_clock %/% 60) %>% 
+  mutate(game_clock_seconds = game_clock %% 60)
+
+epv_curve_5 <-  e.dat_5 %>%  
+  mutate_at(vars(contains("event")), 
+            funs(case_when(
+              . == 1 ~ "Free Throw Made",
+              . == 2 ~ "Free Throw Missed",
+              . == 3 ~ "Shot Made",
+              . == 4 ~ "Shot Missed",
+              . == 5 ~ "Offensive Rebound",
+              . == 6 ~ "Defensive Rebound",
+              . == 7 ~ "Turnover",
+              . == 8 ~ "Foul",
+              . == 9 ~ "Violation",
+              . == 10 ~ "Substitution",
+              . == 11 ~ "Timeout",
+              . == 12 ~ "Jump Ball",
+              . == 13 ~ "Ejection",
+              . == 14 ~ "Start Period",
+              . == 15 ~ "End Period",
+              . == 16 ~ "Clock Sync",
+              . == 17 ~ "Instant Replay",
+              . == 18 ~ "Replay Ruling",
+              . == 19 ~ "Game Over",
+              . == 20 ~ "Stoppage",
+              . == 21 ~ "Dribble",
+              . == 22 ~ "Pass",
+              . == 23 ~ "Possession",
+              . == 24 ~ "Shot Block",
+              . == 25 ~ "Assist",
+              TRUE ~ ""
+            )
+            
+            ))
+
+
+epv_curve_5 %>% 
+  gather("player", "event", c(a1_event, a2_event, a3_event, a4_event, a5_event,
+                              h1_event, h2_event, h3_event, h4_event, h5_event)) %>% 
+  mutate(event = if_else(is.na(event), "", event)) %>% 
+  filter(event != "Dribble") %>% 
+  ggplot(aes(x = 720 - game_clock, y = epv.smooth, label = event)) +
+  geom_path() +
+  geom_label_repel(arrow = arrow(length = unit(0.035, "npc"), type = "open", ends = "first"),
+                   force = 0.5)
+
+```
+
+
+
+# Chris Bosh Plays
+
+### Poss 28
+
+1st Quarter 7:14 
+
+```{r}
+make_poss_gif_without(28)
+```
+
+#### Static Plot
+
+```{r}
+e.dat_28 <- e.dat %>% 
+  filter(possID == 28)
+
+
+# Mutate jersey number columns
+e.dat_28 <- e.dat_28 %>% 
+  mutate(quarter_processed = case_when(
+    quarter == 1 ~ "1ST",
+    quarter == 2 ~ "2ND",
+    quarter == 3 ~ "3RD",
+    quarter == 4 ~ "4TH",
+    TRUE ~ "NA"
+  )) %>% 
+  mutate(game_clock_minutes = game_clock %/% 60) %>% 
+  mutate(game_clock_seconds = game_clock %% 60)
+
+epv_curve_28 <-  e.dat_28 %>%  
+  mutate_at(vars(contains("event")), 
+            funs(case_when(
+              . == 1 ~ "Free Throw Made",
+              . == 2 ~ "Free Throw Missed",
+              . == 3 ~ "Shot Made",
+              . == 4 ~ "Shot Missed",
+              . == 5 ~ "Offensive Rebound",
+              . == 6 ~ "Defensive Rebound",
+              . == 7 ~ "Turnover",
+              . == 8 ~ "Foul",
+              . == 9 ~ "Violation",
+              . == 10 ~ "Substitution",
+              . == 11 ~ "Timeout",
+              . == 12 ~ "Jump Ball",
+              . == 13 ~ "Ejection",
+              . == 14 ~ "Start Period",
+              . == 15 ~ "End Period",
+              . == 16 ~ "Clock Sync",
+              . == 17 ~ "Instant Replay",
+              . == 18 ~ "Replay Ruling",
+              . == 19 ~ "Game Over",
+              . == 20 ~ "Stoppage",
+              . == 21 ~ "Dribble",
+              . == 22 ~ "Pass",
+              . == 23 ~ "Possession",
+              . == 24 ~ "Shot Block",
+              . == 25 ~ "Assist",
+              TRUE ~ ""
+            )
+            
+            ))
+
+
+epv_curve_28 %>% 
+  gather("player", "event", c(a1_event, a2_event, a3_event, a4_event, a5_event,
+                              h1_event, h2_event, h3_event, h4_event, h5_event)) %>% 
+  mutate(event = if_else(is.na(event), "", event)) %>% 
+  filter(event != "Dribble",
+         event != "Possession") %>% 
+  ggplot(aes(x = 720 - game_clock, y = epv.smooth, label = event)) +
+  geom_path() +
+  geom_label_repel(arrow = arrow(length = unit(0.035, "npc"), type = "open", ends = "first"),
+                   force = 1)
+
+```
+
+
+### Poss ID 86
+
+2nd Quarter 6:03 
+
+```{r}
+make_poss_gif_without(86)
+```
+
+#### Static Plot
+
+```{r}
+e.dat_86 <- e.dat %>% 
+  filter(possID == 86)
+
+
+# Mutate jersey number columns
+e.dat_86 <- e.dat_86 %>% 
+  mutate(quarter_processed = case_when(
+    quarter == 1 ~ "1ST",
+    quarter == 2 ~ "2ND",
+    quarter == 3 ~ "3RD",
+    quarter == 4 ~ "4TH",
+    TRUE ~ "NA"
+  )) %>% 
+  mutate(game_clock_minutes = game_clock %/% 60) %>% 
+  mutate(game_clock_seconds = game_clock %% 60)
+
+epv_curve_86 <-  e.dat_86 %>%  
+  mutate_at(vars(contains("event")), 
+            funs(case_when(
+              . == 1 ~ "Free Throw Made",
+              . == 2 ~ "Free Throw Missed",
+              . == 3 ~ "Shot Made",
+              . == 4 ~ "Shot Missed",
+              . == 5 ~ "Offensive Rebound",
+              . == 6 ~ "Defensive Rebound",
+              . == 7 ~ "Turnover",
+              . == 8 ~ "Foul",
+              . == 9 ~ "Violation",
+              . == 10 ~ "Substitution",
+              . == 11 ~ "Timeout",
+              . == 12 ~ "Jump Ball",
+              . == 13 ~ "Ejection",
+              . == 14 ~ "Start Period",
+              . == 15 ~ "End Period",
+              . == 16 ~ "Clock Sync",
+              . == 17 ~ "Instant Replay",
+              . == 18 ~ "Replay Ruling",
+              . == 19 ~ "Game Over",
+              . == 20 ~ "Stoppage",
+              . == 21 ~ "Dribble",
+              . == 22 ~ "Pass",
+              . == 23 ~ "Possession",
+              . == 24 ~ "Shot Block",
+              . == 25 ~ "Assist",
+              TRUE ~ ""
+            )
+            
+            ))
+
+
+epv_curve_86 %>% 
+  gather("player", "event", c(a1_event, a2_event, a3_event, a4_event, a5_event,
+                              h1_event, h2_event, h3_event, h4_event, h5_event)) %>% 
+  mutate(event = if_else(is.na(event), "", event)) %>% 
+  filter(event != "Dribble",
+         event != "Possession") %>% 
+  ggplot(aes(x = 720 - game_clock, y = epv.smooth, label = event)) +
+  geom_path() +
+  geom_label_repel(arrow = arrow(length = unit(0.035, "npc"), type = "open", ends = "first"),
+                   force = 2)
+
+```
+
+### Poss ID 207
+
+4th Quarter 7:07 
+
+```{r}
+make_poss_gif_without(207)
+```
+
+#### Static Plot
+
+```{r}
+e.dat_207 <- e.dat %>% 
+  filter(possID == 207)
+
+
+# Mutate jersey number columns
+e.dat_207 <- e.dat_207 %>% 
+  mutate(quarter_processed = case_when(
+    quarter == 1 ~ "1ST",
+    quarter == 2 ~ "2ND",
+    quarter == 3 ~ "3RD",
+    quarter == 4 ~ "4TH",
+    TRUE ~ "NA"
+  )) %>% 
+  mutate(game_clock_minutes = game_clock %/% 60) %>% 
+  mutate(game_clock_seconds = game_clock %% 60)
+
+epv_curve_207 <-  e.dat_207 %>%  
+  mutate_at(vars(contains("event")), 
+            funs(case_when(
+              . == 1 ~ "Free Throw Made",
+              . == 2 ~ "Free Throw Missed",
+              . == 3 ~ "Shot Made",
+              . == 4 ~ "Shot Missed",
+              . == 5 ~ "Offensive Rebound",
+              . == 6 ~ "Defensive Rebound",
+              . == 7 ~ "Turnover",
+              . == 8 ~ "Foul",
+              . == 9 ~ "Violation",
+              . == 10 ~ "Substitution",
+              . == 11 ~ "Timeout",
+              . == 12 ~ "Jump Ball",
+              . == 13 ~ "Ejection",
+              . == 14 ~ "Start Period",
+              . == 15 ~ "End Period",
+              . == 16 ~ "Clock Sync",
+              . == 17 ~ "Instant Replay",
+              . == 18 ~ "Replay Ruling",
+              . == 19 ~ "Game Over",
+              . == 20 ~ "Stoppage",
+              . == 21 ~ "Dribble",
+              . == 22 ~ "Pass",
+              . == 23 ~ "Possession",
+              . == 24 ~ "Shot Block",
+              . == 25 ~ "Assist",
+              TRUE ~ ""
+            )
+            
+            ))
+
+
+epv_curve_207 %>% 
+  gather("player", "event", c(a1_event, a2_event, a3_event, a4_event, a5_event,
+                              h1_event, h2_event, h3_event, h4_event, h5_event)) %>% 
+  mutate(event = if_else(is.na(event), "", event)) %>% 
+  filter(event != "Dribble") %>% 
+  ggplot(aes(x = 720 - game_clock, y = epv.smooth, label = event)) +
+  geom_path() +
+  geom_label_repel(arrow = arrow(length = unit(0.035, "npc"), type = "open", ends = "first"),
+                   force = 0.9)
+
+```
